@@ -4,6 +4,7 @@ import { GraphQLModule } from '@nestjs/graphql';
 
 import { generatedGraphqlSchemaPath } from './generated-graphql-schema';
 import type { ActorContext } from './application/authentication/actor-context';
+import type { AuthenticatedUser } from './domain/authentication/authenticated-user';
 import { config, type AuthMode } from './config';
 import type {
   GraphqlHttpRequest,
@@ -17,6 +18,13 @@ export interface AppModuleOptions {
 }
 
 @Module({})
+/**
+ * Root NestJS application module.
+ *
+ * It configures framework-level concerns such as Apollo GraphQL, health
+ * endpoints, and feature modules while leaving business behavior inside the
+ * application/domain layers.
+ */
 export class AppModule {
   static forRoot(options: AppModuleOptions = {}): DynamicModule {
     const authMode = options.authMode ?? config.AUTH_MODE;
@@ -25,7 +33,11 @@ export class AppModule {
       req,
     }: {
       req: GraphqlHttpRequest;
-    }): MovieReservationGraphqlContext => ({ req, actor: requireActor(req) });
+    }): MovieReservationGraphqlContext => ({
+      req,
+      authenticatedUser: requireAuthenticatedUser(req),
+      actor: requireActor(req),
+    });
     const gqlModuleOptions = {
       driver: ApolloDriver,
       autoSchemaFile: generatedGraphqlSchemaPath,
@@ -42,6 +54,14 @@ export class AppModule {
       ],
     };
   }
+}
+
+function requireAuthenticatedUser(req: GraphqlHttpRequest): AuthenticatedUser {
+  if (req.authenticatedUser === undefined) {
+    throw new Error('GraphQL authenticated user context was not initialized');
+  }
+
+  return req.authenticatedUser;
 }
 
 function requireActor(req: GraphqlHttpRequest): ActorContext {

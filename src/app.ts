@@ -6,6 +6,10 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule, type AppModuleOptions } from './app.module';
 import { config } from './config.js';
 
+/**
+ * TODO: move the logging setup to a dedicated place - its a cross cutting
+ *  concern, refactor into structured logging
+ */
 function getNestLogger(
   logLevel: typeof config.LOG_LEVEL,
   nodeEnv: typeof config.NODE_ENV,
@@ -33,10 +37,7 @@ export async function createApp(
   options: AppModuleOptions = {},
 ): Promise<INestApplication> {
   const logger = getNestLogger(config.LOG_LEVEL, config.NODE_ENV);
-  return NestFactory.create(
-      AppModule.forRoot(options),
-      {
-        logger: logger,
-      }
-      );
+  return NestFactory.create(AppModule.forRoot(options), {
+    logger: logger,
+  });
 }
