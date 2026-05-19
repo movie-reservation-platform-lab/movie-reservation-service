@@ -1,0 +1,22 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type AuthenticatedUser {
+  email: String!
+  movieProviderId: ID!
+  roles: [UserRole!]!
+  scopes: [String!]!
+  userId: ID!
+  username: String!
+}
+
+type Query {
+  me: AuthenticatedUser!
+}
+
+enum UserRole {
+  CUSTOMER
+  SYSTEM
+  TENANT_ADMIN
+}
