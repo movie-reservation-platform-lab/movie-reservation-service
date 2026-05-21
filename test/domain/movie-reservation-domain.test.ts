@@ -57,6 +57,18 @@ describe('ReservationRequest', () => {
     ).toThrow('ReservationRequest must include at least one seat');
   });
 
+  it('rejects duplicate selected seats', () => {
+    expect(() =>
+      createReservationRequest({
+        id: createReservationRequestId('request-1'),
+        movieProviderId: createMovieProviderId('provider-1'),
+        screeningId: createScreeningId('screening-1'),
+        seatIds: [createSeatId('seat-a1'), createSeatId('seat-a1')],
+        requestedByUserId: createUserId('user-1'),
+      }),
+    ).toThrow('ReservationRequest cannot include duplicate seats');
+  });
+
   it('allows the expected requested to processing to confirmed state transition', () => {
     const requested = createReservationRequest({
       id: createReservationRequestId('request-1'),

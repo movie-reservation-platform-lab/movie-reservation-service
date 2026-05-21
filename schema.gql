@@ -11,8 +11,68 @@ type AuthenticatedUser {
   username: String!
 }
 
+type Movie {
+  durationMinutes: Int!
+  id: ID!
+  rating: String!
+  title: String!
+}
+
+type Mutation {
+  requestReservation(input: RequestReservationInput!): ReservationRequest!
+}
+
 type Query {
   me: AuthenticatedUser!
+  movies: [Movie!]!
+  reservation(id: ID!): Reservation
+  reservationRequestById(id: ID!): ReservationRequest
+  screenings(movieId: ID): [Screening!]!
+}
+
+input RequestReservationInput {
+  screeningId: ID!
+  seatIds: [ID!]!
+}
+
+type Reservation {
+  confirmedAt: String!
+  id: ID!
+  reservationRequestId: ID!
+  reservedByUserId: ID!
+  screeningId: ID!
+  seatIds: [ID!]!
+}
+
+type ReservationRequest {
+  id: ID!
+  requestedByUserId: ID!
+  screeningId: ID!
+  seatIds: [ID!]!
+  status: ReservationRequestStatus!
+}
+
+enum ReservationRequestStatus {
+  CONFIRMED
+  FAILED
+  PROCESSING
+  REJECTED
+  REQUESTED
+}
+
+type Screening {
+  auditoriumId: ID!
+  endsAt: String!
+  id: ID!
+  movieId: ID!
+  seats: [Seat!]!
+  startsAt: String!
+}
+
+type Seat {
+  id: ID!
+  number: Int!
+  row: String!
 }
 
 enum UserRole {

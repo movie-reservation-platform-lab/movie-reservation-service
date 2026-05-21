@@ -32,14 +32,19 @@ export interface CreateReservationRequestInput {
 }
 
 /**
- * Creates a reservation request and enforces the first domain invariant: a
- * request must include at least one selected seat.
+ * Creates a reservation request and enforces the first domain invariants: a
+ * request must include at least one selected seat, and each selected seat can
+ * appear only once.
  */
 export function createReservationRequest(
   input: CreateReservationRequestInput,
 ): ReservationRequest {
   if (input.seatIds.length === 0) {
     throw new Error('ReservationRequest must include at least one seat');
+  }
+
+  if (new Set(input.seatIds).size !== input.seatIds.length) {
+    throw new Error('ReservationRequest cannot include duplicate seats');
   }
 
   return {

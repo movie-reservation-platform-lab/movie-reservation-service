@@ -1,6 +1,7 @@
 import type { ActorContext } from '../authentication/actor-context';
 import { UserRole } from '../../domain/authentication/user-role';
 import type { Reservation } from '../../domain/movie-reservations/reservation';
+import type { ReservationRequest } from '../../domain/movie-reservations/reservation-request';
 
 /**
  * Placeholder policy service for movie reservation authorization decisions.
@@ -13,6 +14,25 @@ import type { Reservation } from '../../domain/movie-reservations/reservation';
  *
  */
 export class AuthorizationService {
+  canReadReservationRequest(
+    actor: ActorContext,
+    reservationRequest: ReservationRequest,
+  ): boolean {
+    if (actor.movieProviderId !== reservationRequest.movieProviderId) {
+      return false;
+    }
+
+    if (actor.roles.includes(UserRole.TENANT_ADMIN)) {
+      return true;
+    }
+
+    if (actor.scopes.includes('reservations:read:tenant')) {
+      return true;
+    }
+
+    return actor.userId === reservationRequest.requestedByUserId;
+  }
+
   canReadReservation(actor: ActorContext, reservation: Reservation): boolean {
     if (actor.movieProviderId !== reservation.movieProviderId) {
       return false;

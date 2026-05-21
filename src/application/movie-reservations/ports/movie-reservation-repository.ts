@@ -30,6 +30,10 @@ export interface MovieReservationRepository {
   findScreeningsByProviderId(
     movieProviderId: MovieProviderId,
   ): Promise<readonly Screening[]>;
+  findScreeningForProvider(
+    movieProviderId: MovieProviderId,
+    screeningId: ScreeningId,
+  ): Promise<Screening | null>;
   findSeatsByScreeningId(
     movieProviderId: MovieProviderId,
     screeningId: ScreeningId,
@@ -37,6 +41,7 @@ export interface MovieReservationRepository {
   findReservationRequestById(
     reservationRequestId: ReservationRequestId,
   ): Promise<ReservationRequest | null>;
+  saveReservationRequest(reservationRequest: ReservationRequest): Promise<void>;
   findReservationById(
     reservationId: ReservationId,
   ): Promise<Reservation | null>;

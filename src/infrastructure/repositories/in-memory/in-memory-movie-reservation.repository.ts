@@ -1,4 +1,5 @@
 import type { MovieReservationRepository } from '../../../application/movie-reservations/ports/movie-reservation-repository';
+import { ReservationRequestAlreadyExistsError } from '../../../application/movie-reservations/errors/reservation-request-already-exists-error';
 import { createUserId } from '../../../domain/authentication/user-id';
 import type { Auditorium } from '../../../domain/movie-reservations/auditorium';
 import {
@@ -297,6 +298,22 @@ export class InMemoryMovieReservationRepository implements MovieReservationRepos
     );
   }
 
+  async findScreeningForProvider(
+    movieProviderId: MovieProviderId,
+    screeningId: ScreeningId,
+  ): Promise<Screening | null> {
+    const screening = this.screeningsById.get(screeningId);
+
+    if (
+      screening === undefined ||
+      screening.movieProviderId !== movieProviderId
+    ) {
+      return null;
+    }
+
+    return screening;
+  }
+
   async findSeatsByScreeningId(
     movieProviderId: MovieProviderId,
     screeningId: ScreeningId,
@@ -321,6 +338,16 @@ export class InMemoryMovieReservationRepository implements MovieReservationRepos
     reservationRequestId: ReservationRequestId,
   ): Promise<ReservationRequest | null> {
     return this.reservationRequestsById.get(reservationRequestId) ?? null;
+  }
+
+  async saveReservationRequest(
+    reservationRequest: ReservationRequest,
+  ): Promise<void> {
+    if (this.reservationRequestsById.has(reservationRequest.id)) {
+      throw new ReservationRequestAlreadyExistsError(reservationRequest.id);
+    }
+
+    this.reservationRequestsById.set(reservationRequest.id, reservationRequest);
   }
 
   async findReservationById(
