@@ -1,12 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
 
-import { AuthenticationService } from '../../src/application/authentication/authentication.service';
-import { MovieReservationsService } from '../../src/application/movie-reservations/movie-reservations.service';
-import type { MovieReservationRepository } from '../../src/application/movie-reservations/ports/movie-reservation-repository';
-import { createMovieProviderId } from '../../src/domain/movie-reservations/movie-provider-id';
-import { MOVIE_RESERVATION_REPOSITORY } from '../../src/di/movie-reservations/movie-reservation.tokens';
-import { MovieReservationsCompositionModule } from '../../src/di/movie-reservations/movie-reservations-composition.module';
+import { AuthenticationService } from '../../../src/application/authentication/authentication.service';
+import { MovieReservationsService } from '../../../src/application/movie-reservations/movie-reservations.service';
+import type { MovieReservationRepository } from '../../../src/application/movie-reservations/ports/movie-reservation-repository';
+import { createMovieProviderId } from '../../../src/domain/movie-reservations/movie-provider-id';
+import { MOVIE_RESERVATION_REPOSITORY } from '../../../src/di/movie-reservations/movie-reservation.tokens';
+import { MovieReservationsCompositionModule } from '../../../src/di/movie-reservations/movie-reservations-composition.module';
 
 describe('MovieReservationsCompositionModule', () => {
   it('resolves the application services and repository token', async () => {

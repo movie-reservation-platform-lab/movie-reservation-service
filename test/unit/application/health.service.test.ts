@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { HealthService } from '../../src/application/health/health.service';
+import { HealthService } from '../../../src/application/health/health.service';
 
 describe('HealthService', () => {
   it('returns liveness status', () => {

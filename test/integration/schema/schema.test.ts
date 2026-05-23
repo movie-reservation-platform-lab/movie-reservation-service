@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { createApp } from '../src/app';
-import { generatedGraphqlSchemaPath } from '../src/generated-graphql-schema';
+import { createApp } from '../../../src/app';
+import { generatedGraphqlSchemaPath } from '../../../src/generated-graphql-schema';
 
 describe('generated GraphQL schema', () => {
   let app: INestApplication;

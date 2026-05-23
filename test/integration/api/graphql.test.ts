@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { createApp } from '../../src/app';
+import { createApp } from '../../../src/app';
 
 describe('movie reservation GraphQL auth context with local-jwt auth', () => {
   let app: INestApplication;

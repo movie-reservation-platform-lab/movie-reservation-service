@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { createActorContext } from '../../src/application/authentication/actor-context';
-import { AuthorizationService } from '../../src/application/authorization/authorization.service';
-import { MovieReservationsService } from '../../src/application/movie-reservations/movie-reservations.service';
-import { createUserId } from '../../src/domain/authentication/user-id';
-import { UserRole } from '../../src/domain/authentication/user-role';
-import { createMovieProviderId } from '../../src/domain/movie-reservations/movie-provider-id';
-import { createReservationId } from '../../src/domain/movie-reservations/reservation-id';
-import { InMemoryMovieReservationRepository } from '../../src/infrastructure/repositories/in-memory/in-memory-movie-reservation.repository';
+import { createActorContext } from '../../../src/application/authentication/actor-context';
+import { AuthorizationService } from '../../../src/application/authorization/authorization.service';
+import { MovieReservationsService } from '../../../src/application/movie-reservations/movie-reservations.service';
+import { createUserId } from '../../../src/domain/authentication/user-id';
+import { UserRole } from '../../../src/domain/authentication/user-role';
+import { createMovieProviderId } from '../../../src/domain/movie-reservations/movie-provider-id';
+import { createReservationId } from '../../../src/domain/movie-reservations/reservation-id';
+import { InMemoryMovieReservationRepository } from '../../../src/infrastructure/repositories/in-memory/in-memory-movie-reservation.repository';
 
 describe('createActorContext', () => {
   it('keeps profile fields out of the application actor context', () => {

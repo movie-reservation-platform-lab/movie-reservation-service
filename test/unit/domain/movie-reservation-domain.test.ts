@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { createMovieProviderId } from '../../src/domain/movie-reservations/movie-provider-id';
+import { createMovieProviderId } from '../../../src/domain/movie-reservations/movie-provider-id';
 import {
   createReservationRequest,
   failReservationRequest,
   startProcessingReservationRequest,
   confirmReservationRequest,
   rejectReservationRequest,
-} from '../../src/domain/movie-reservations/reservation-request';
-import { createReservationRequestId } from '../../src/domain/movie-reservations/reservation-request-id';
-import { ReservationRequestStatus } from '../../src/domain/movie-reservations/reservation-request-status';
-import { createScreeningId } from '../../src/domain/movie-reservations/screening-id';
-import { createSeatId } from '../../src/domain/movie-reservations/seat-id';
-import { createUserId } from '../../src/domain/authentication/user-id';
+} from '../../../src/domain/movie-reservations/reservation-request';
+import { createReservationRequestId } from '../../../src/domain/movie-reservations/reservation-request-id';
+import { ReservationRequestStatus } from '../../../src/domain/movie-reservations/reservation-request-status';
+import { createScreeningId } from '../../../src/domain/movie-reservations/screening-id';
+import { createSeatId } from '../../../src/domain/movie-reservations/seat-id';
+import { createUserId } from '../../../src/domain/authentication/user-id';
 
 describe('movie reservation domain ids', () => {
   it('creates provider, screening, seat, request, and user ids from non-empty strings', () => {

@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { createUserId } from '../../src/domain/authentication/user-id';
-import { createMovieId } from '../../src/domain/movie-reservations/movie-id';
-import { createMovieProviderId } from '../../src/domain/movie-reservations/movie-provider-id';
-import { createReservationRequest } from '../../src/domain/movie-reservations/reservation-request';
-import { createReservationRequestId } from '../../src/domain/movie-reservations/reservation-request-id';
-import { ReservationRequestStatus } from '../../src/domain/movie-reservations/reservation-request-status';
-import { createReservationId } from '../../src/domain/movie-reservations/reservation-id';
-import { createScreeningId } from '../../src/domain/movie-reservations/screening-id';
-import { createSeatId } from '../../src/domain/movie-reservations/seat-id';
-import { InMemoryMovieReservationRepository } from '../../src/infrastructure/repositories/in-memory/in-memory-movie-reservation.repository';
+import { createUserId } from '../../../src/domain/authentication/user-id';
+import { createMovieId } from '../../../src/domain/movie-reservations/movie-id';
+import { createMovieProviderId } from '../../../src/domain/movie-reservations/movie-provider-id';
+import { createReservationRequest } from '../../../src/domain/movie-reservations/reservation-request';
+import { createReservationRequestId } from '../../../src/domain/movie-reservations/reservation-request-id';
+import { ReservationRequestStatus } from '../../../src/domain/movie-reservations/reservation-request-status';
+import { createReservationId } from '../../../src/domain/movie-reservations/reservation-id';
+import { createScreeningId } from '../../../src/domain/movie-reservations/screening-id';
+import { createSeatId } from '../../../src/domain/movie-reservations/seat-id';
+import { InMemoryMovieReservationRepository } from '../../../src/infrastructure/repositories/in-memory/in-memory-movie-reservation.repository';
 
 describe('InMemoryMovieReservationRepository', () => {
   it('seeds movies for at least two movie providers', async () => {

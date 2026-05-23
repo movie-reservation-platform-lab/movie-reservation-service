@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { JwtClaims } from '../../src/application/authentication/token-validation-client';
-import { parseMovieReservationClaims } from '../../src/infrastructure/authentication/movie-reservation-claims-parser';
+import type { JwtClaims } from '../../../src/application/authentication/token-validation-client';
+import { parseMovieReservationClaims } from '../../../src/infrastructure/authentication/movie-reservation-claims-parser';
 
 describe('parseMovieReservationClaims', () => {
   it('maps required identity claims into an authenticated user', () => {
