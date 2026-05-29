@@ -1,11 +1,21 @@
 import { Test } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
 
+import { createActorContext } from '../../../src/application/authentication/actor-context';
 import { AuthenticationService } from '../../../src/application/authentication/authentication.service';
 import { MovieReservationsService } from '../../../src/application/movie-reservations/movie-reservations.service';
 import type { MovieReservationRepository } from '../../../src/application/movie-reservations/ports/movie-reservation-repository';
+import type { ReservationRequestProcessor } from '../../../src/application/movie-reservations/ports/reservation-request-processor';
+import { createUserId } from '../../../src/domain/authentication/user-id';
+import { UserRole } from '../../../src/domain/authentication/user-role';
 import { createMovieProviderId } from '../../../src/domain/movie-reservations/movie-provider-id';
-import { MOVIE_RESERVATION_REPOSITORY } from '../../../src/di/movie-reservations/movie-reservation.tokens';
+import { ReservationRequestStatus } from '../../../src/domain/movie-reservations/reservation-request-status';
+import { createScreeningId } from '../../../src/domain/movie-reservations/screening-id';
+import { createSeatId } from '../../../src/domain/movie-reservations/seat-id';
+import {
+  MOVIE_RESERVATION_REPOSITORY,
+  RESERVATION_REQUEST_PROCESSOR,
+} from '../../../src/di/movie-reservations/movie-reservation.tokens';
 import { MovieReservationsCompositionModule } from '../../../src/di/movie-reservations/movie-reservations-composition.module';
 
 describe('MovieReservationsCompositionModule', () => {
@@ -31,6 +41,52 @@ describe('MovieReservationsCompositionModule', () => {
         createMovieProviderId('provider-aurora'),
       ),
     ).resolves.toHaveLength(2);
+  });
+
+  it('wires the processor over the same in-memory store as the application service', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        MovieReservationsCompositionModule.forRoot({
+          authMode: 'local-fixed-user',
+        }),
+      ],
+    }).compile();
+    const reservationsService = moduleRef.get(MovieReservationsService);
+    const processor = moduleRef.get<ReservationRequestProcessor>(
+      RESERVATION_REQUEST_PROCESSOR,
+    );
+    const actor = createActorContext({
+      userId: createUserId('local-dev-user'),
+      username: 'local-dev-admin',
+      email: 'local-dev@example.test',
+      movieProviderId: createMovieProviderId('provider-aurora'),
+      roles: [UserRole.TENANT_ADMIN],
+      scopes: ['reservations:read:tenant'],
+    });
+
+    const reservationRequest = await reservationsService.requestReservation(
+      actor,
+      {
+        screeningId: createScreeningId('screening-aurora-1'),
+        seatIds: [createSeatId('seat-aurora-1-a3')],
+      },
+    );
+
+    expect(reservationRequest.status).toBe(ReservationRequestStatus.REQUESTED);
+
+    await expect(processor.processNextPendingRequest()).resolves.toMatchObject({
+      outcome: 'confirmed',
+      reservationRequest: {
+        id: reservationRequest.id,
+        status: ReservationRequestStatus.CONFIRMED,
+      },
+    });
+    await expect(
+      reservationsService.getReservationRequest(actor, reservationRequest.id),
+    ).resolves.toMatchObject({
+      id: reservationRequest.id,
+      status: ReservationRequestStatus.CONFIRMED,
+    });
   });
 
   it('wires local-fixed-user auth as a convenient development identity', async () => {

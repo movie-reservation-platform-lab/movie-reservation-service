@@ -71,6 +71,10 @@ profile needs local-only values or future secret-backed settings. Rendered local
 files should use names such as `env_files/local-jwt.local.env`; those are
 ignored by git.
 
+`ENABLE_GRAPHIQL` controls whether the unauthenticated GraphiQL HTML landing
+page is available at `/graphql`. Local and test profiles set it to `true`;
+production-like profiles should set it to `false`.
+
 The runtime flow is intentionally simple:
 
 1. Node loads an env file into `process.env` with `--env-file`, or the platform

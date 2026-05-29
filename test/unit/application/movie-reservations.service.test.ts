@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { createActorContext } from '../../../src/application/authentication/actor-context';
 import { AuthorizationService } from '../../../src/application/authorization/authorization.service';
 import { MovieReservationsService } from '../../../src/application/movie-reservations/movie-reservations.service';
+import type { ReservationRequestIdGenerator } from '../../../src/application/movie-reservations/ports/reservation-request-id-generator';
 import { createUserId } from '../../../src/domain/authentication/user-id';
 import { UserRole } from '../../../src/domain/authentication/user-role';
 import { createMovieProviderId } from '../../../src/domain/movie-reservations/movie-provider-id';
 import { createReservationId } from '../../../src/domain/movie-reservations/reservation-id';
+import { createReservationRequestId } from '../../../src/domain/movie-reservations/reservation-request-id';
 import { InMemoryMovieReservationRepository } from '../../../src/infrastructure/repositories/in-memory/in-memory-movie-reservation.repository';
 
 describe('createActorContext', () => {
@@ -109,7 +111,14 @@ function createService(): MovieReservationsService {
   return new MovieReservationsService(
     InMemoryMovieReservationRepository.withSeedData(),
     new AuthorizationService(),
+    new StubReservationRequestIdGenerator(),
   );
+}
+
+class StubReservationRequestIdGenerator implements ReservationRequestIdGenerator {
+  generateReservationRequestId() {
+    return createReservationRequestId('request-test');
+  }
 }
 
 function createCustomerActor(input: {

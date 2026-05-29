@@ -33,14 +33,26 @@ describe('generated GraphQL schema', () => {
     const schema = readFileSync(generatedGraphqlSchemaPath, 'utf8');
 
     expect(schema).toContain('movies: [Movie!]!');
-    expect(schema).toContain('screenings(movieId: ID): [Screening!]!');
-    expect(schema).toContain(
-      'requestReservation(input: RequestReservationInput!): ReservationRequest!',
+    expect(schema).toMatch(
+      /screenings\(\s+"""Optional movie id used to show screenings for one movie\."""\s+movieId: ID\s+\): \[Screening!\]!/,
     );
-    expect(schema).toContain(
+    expect(schema).toMatch(
+      /requestReservation\(\s+"""[\s\S]*?Tenant scope comes from authentication, not from this input\.[\s\S]*?"""\s+input: RequestReservationInput!\s+\): ReservationRequest!/,
+    );
+    expect(schema).toMatch(
+      /reservationRequestStatus\(\s+"""Reservation request id returned by requestReservation\."""\s+id: ID!\s+\): ReservationRequest/,
+    );
+    expect(schema).toMatch(
+      /reservationResult\(\s+"""[\s\S]*?Returns null until the request is confirmed\.[\s\S]*?"""\s+requestId: ID!\s+\): Reservation/,
+    );
+    expect(schema).not.toContain(
       'reservationRequestById(id: ID!): ReservationRequest',
     );
-    expect(schema).toContain('reservation(id: ID!): Reservation');
+    expect(schema).not.toContain('confirmedReservation(id: ID!): Reservation');
+    expect(schema).toContain(
+      'Polls the status of a reservation request created by requestReservation.',
+    );
+    expect(schema).toContain('Intent-driven command to reserve seats.');
     expect(schema).toContain('type Movie');
     expect(schema).toContain('type Screening');
     expect(schema).toContain('type Seat');
@@ -49,7 +61,7 @@ describe('generated GraphQL schema', () => {
     expect(schema).toContain('enum ReservationRequestStatus');
     expect(schema).toContain('input RequestReservationInput');
     expect(schema).toMatch(
-      /input RequestReservationInput \{\n\s+screeningId: ID!\n\s+seatIds: \[ID!\]!\n\}/,
+      /input RequestReservationInput \{\s+"""Screening the user wants to reserve seats for\."""\s+screeningId: ID!\s+"""[\s\S]*?The whole request is rejected if any requested seat conflicts during processing\.[\s\S]*?"""\s+seatIds: \[ID!\]!\s+\}/,
     );
   });
 });

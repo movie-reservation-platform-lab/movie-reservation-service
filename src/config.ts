@@ -16,6 +16,10 @@ const configSchema = z
     NODE_ENV: z
       .enum(['development', 'test', 'staging', 'production'])
       .default('development'),
+    ENABLE_GRAPHIQL: z
+      .enum(['true', 'false'])
+      .transform((value) => value === 'true')
+      .optional(),
   })
   .superRefine((value, context) => {
     if (
@@ -29,7 +33,13 @@ const configSchema = z
           'local auth modes are only allowed in development and test environments',
       });
     }
-  });
+  })
+  .transform((value) => ({
+    ...value,
+    ENABLE_GRAPHIQL:
+      value.ENABLE_GRAPHIQL ??
+      (value.NODE_ENV === 'development' || value.NODE_ENV === 'test'),
+  }));
 
 /**
  * Parsed and validated config (like a Pydantic model instance)

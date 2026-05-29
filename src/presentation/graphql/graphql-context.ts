@@ -9,6 +9,7 @@ import type { AuthenticatedUser } from '../../domain/authentication/authenticate
  * concrete Express request type.
  */
 export interface GraphqlHttpRequest {
+  readonly method?: string;
   readonly headers: Readonly<
     Record<string, string | readonly string[] | undefined>
   >;

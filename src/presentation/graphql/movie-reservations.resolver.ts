@@ -1,8 +1,8 @@
+import { Inject } from '@nestjs/common';
 import { Args, Context, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 
 import { MovieReservationsService } from '../../application/movie-reservations/movie-reservations.service';
 import { createMovieId } from '../../domain/movie-reservations/movie-id';
-import { createReservationId } from '../../domain/movie-reservations/reservation-id';
 import { createReservationRequestId } from '../../domain/movie-reservations/reservation-request-id';
 import { createScreeningId } from '../../domain/movie-reservations/screening-id';
 import { createSeatId } from '../../domain/movie-reservations/seat-id';
@@ -21,26 +21,33 @@ import { ReservationGql } from './models/reservation.gql';
 import { ReservationRequestGql } from './models/reservation-request.gql';
 import { ScreeningGql } from './models/screening.gql';
 
-@Resolver()
 /**
  * GraphQL resolver for movie reservation operations.
  *
  * Resolvers should stay thin: read GraphQL context/input, call application use
  * cases, and map application/domain output into GraphQL models.
  */
+@Resolver()
 export class MovieReservationsResolver {
   constructor(
+    @Inject(MovieReservationsService)
     private readonly movieReservationsService: MovieReservationsService,
   ) {}
 
-  @Query(() => AuthenticatedUserGql)
+  @Query(() => AuthenticatedUserGql, {
+    description:
+      'Returns the authenticated user and movie provider context for this request.',
+  })
   async me(
     @Context() context: MovieReservationGraphqlContext,
   ): Promise<AuthenticatedUserGql> {
     return toAuthenticatedUserGql(context.authenticatedUser);
   }
 
-  @Query(() => [MovieGql])
+  @Query(() => [MovieGql], {
+    description:
+      'Lists movies available to the authenticated user within their movie provider.',
+  })
   async movies(
     @Context() context: MovieReservationGraphqlContext,
   ): Promise<MovieGql[]> {
@@ -51,10 +58,17 @@ export class MovieReservationsResolver {
   }
 
   @Reflect.metadata('design:paramtypes', [Object, String])
-  @Query(() => [ScreeningGql])
+  @Query(() => [ScreeningGql], {
+    description:
+      'Lists scheduled screenings, optionally filtered to one movie. The nested seats are the auditorium seats for the screening, not a dedicated availability calculation.',
+  })
   async screenings(
     @Context() context: MovieReservationGraphqlContext,
-    @Args('movieId', { type: () => ID, nullable: true })
+    @Args('movieId', {
+      type: () => ID,
+      nullable: true,
+      description: 'Optional movie id used to show screenings for one movie.',
+    })
     movieId?: string,
   ): Promise<ScreeningGql[]> {
     const screeningInput =
@@ -65,7 +79,7 @@ export class MovieReservationsResolver {
     );
 
     // TODO: Review a DataLoader, batch repository method, or read model before
-    // adding the Postgres adapter. Tracked in docs/plans/service-follow-up-tasks.md.
+    //  adding the Postgres adapter. Tracked in docs/plans/service-follow-up-tasks.md.
     return Promise.all(
       screenings.map(async (screening) => {
         const seats = await this.movieReservationsService.listSeatsForScreening(
@@ -78,10 +92,17 @@ export class MovieReservationsResolver {
   }
 
   @Reflect.metadata('design:paramtypes', [Object, RequestReservationInputGql])
-  @Mutation(() => ReservationRequestGql)
+  @Mutation(() => ReservationRequestGql, {
+    description:
+      'Creates an asynchronous reservation request and returns its initial status. Processing happens later through the internal reservation request processor.',
+  })
   async requestReservation(
     @Context() context: MovieReservationGraphqlContext,
-    @Args('input', { type: () => RequestReservationInputGql })
+    @Args('input', {
+      type: () => RequestReservationInputGql,
+      description:
+        'Screening and seat ids for the reservation request. Tenant scope comes from authentication, not from this input.',
+    })
     input: RequestReservationInputGql,
   ): Promise<ReservationRequestGql> {
     const reservationRequest =
@@ -93,11 +114,23 @@ export class MovieReservationsResolver {
     return toReservationRequestGql(reservationRequest);
   }
 
+  // TODO: Replace these nullable read contracts with explicit GraphQL
+  //  payloads/unions before treating the API as production-shaped. Today `null`
+  //  can mean not found, unauthorized/hidden, not confirmed yet, rejected,
+  //  failed, or inconsistent data.
   @Reflect.metadata('design:paramtypes', [Object, String])
-  @Query(() => ReservationRequestGql, { nullable: true })
-  async reservationRequestById(
+  @Query(() => ReservationRequestGql, {
+    nullable: true,
+    description:
+      'Polls the status of a reservation request created by requestReservation.',
+  })
+  async reservationRequestStatus(
     @Context() context: MovieReservationGraphqlContext,
-    @Args('id', { type: () => ID }) id: string,
+    @Args('id', {
+      type: () => ID,
+      description: 'Reservation request id returned by requestReservation.',
+    })
+    id: string,
   ): Promise<ReservationRequestGql | null> {
     const reservationRequest =
       await this.movieReservationsService.getReservationRequest(
@@ -111,15 +144,25 @@ export class MovieReservationsResolver {
   }
 
   @Reflect.metadata('design:paramtypes', [Object, String])
-  @Query(() => ReservationGql, { nullable: true })
-  async reservation(
+  @Query(() => ReservationGql, {
+    nullable: true,
+    description:
+      'Fetches the confirmed reservation produced by a completed reservation request.',
+  })
+  async reservationResult(
     @Context() context: MovieReservationGraphqlContext,
-    @Args('id', { type: () => ID }) id: string,
+    @Args('requestId', {
+      type: () => ID,
+      description:
+        'Reservation request id returned by requestReservation. Returns null until the request is confirmed.',
+    })
+    requestId: string,
   ): Promise<ReservationGql | null> {
-    const reservation = await this.movieReservationsService.getReservation(
-      context.actor,
-      createReservationId(id),
-    );
+    const reservation =
+      await this.movieReservationsService.getReservationByReservationRequestId(
+        context.actor,
+        createReservationRequestId(requestId),
+      );
 
     return reservation === null ? null : toReservationGql(reservation);
   }

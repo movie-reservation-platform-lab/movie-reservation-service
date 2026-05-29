@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import { createMovieProviderId } from '../../../src/domain/movie-reservations/movie-provider-id';
-import {
-  createReservationRequest,
-  failReservationRequest,
-  startProcessingReservationRequest,
-  confirmReservationRequest,
-  rejectReservationRequest,
-} from '../../../src/domain/movie-reservations/reservation-request';
+import { createReservation } from '../../../src/domain/movie-reservations/reservation';
+import { createReservationId } from '../../../src/domain/movie-reservations/reservation-id';
+import { createReservationRequest } from '../../../src/domain/movie-reservations/reservation-request';
 import { createReservationRequestId } from '../../../src/domain/movie-reservations/reservation-request-id';
+import { createReservationRequestSequence } from '../../../src/domain/movie-reservations/reservation-request-sequence';
 import { ReservationRequestStatus } from '../../../src/domain/movie-reservations/reservation-request-status';
+import {
+  confirmReservationRequest,
+  failReservationRequest,
+  rejectReservationRequest,
+  startProcessingReservationRequest,
+} from '../../../src/domain/movie-reservations/reservation-request-transitions';
 import { createScreeningId } from '../../../src/domain/movie-reservations/screening-id';
 import { createSeatId } from '../../../src/domain/movie-reservations/seat-id';
 import { createUserId } from '../../../src/domain/authentication/user-id';
@@ -114,5 +117,72 @@ describe('ReservationRequest', () => {
     expect(() => confirmReservationRequest(requested)).toThrow(
       'Cannot transition reservation request request-1 from REQUESTED to CONFIRMED',
     );
+  });
+});
+
+describe('ReservationRequestSequence', () => {
+  it('creates a branded positive safe integer sequence', () => {
+    expect(createReservationRequestSequence(1)).toBe(1);
+    expect(createReservationRequestSequence(42)).toBe(42);
+  });
+
+  it('rejects invalid sequence values', () => {
+    expect(() => createReservationRequestSequence(0)).toThrow(
+      'ReservationRequestSequence must be a positive safe integer',
+    );
+    expect(() => createReservationRequestSequence(1.5)).toThrow(
+      'ReservationRequestSequence must be a positive safe integer',
+    );
+  });
+});
+
+describe('Reservation', () => {
+  it('creates a confirmed reservation with copied seat ids', () => {
+    const inputSeatIds = [createSeatId('seat-a1'), createSeatId('seat-a2')];
+
+    const reservation = createReservation({
+      id: createReservationId('reservation-1'),
+      movieProviderId: createMovieProviderId('provider-1'),
+      reservationRequestId: createReservationRequestId('request-1'),
+      screeningId: createScreeningId('screening-1'),
+      seatIds: inputSeatIds,
+      reservedByUserId: createUserId('user-1'),
+      confirmedAt: '2026-06-01T09:00:00.000Z',
+    });
+
+    expect(reservation).toMatchObject({
+      id: 'reservation-1',
+      reservationRequestId: 'request-1',
+      seatIds: ['seat-a1', 'seat-a2'],
+    });
+    expect(reservation.seatIds).not.toBe(inputSeatIds);
+  });
+
+  it('rejects confirmed reservations without seats', () => {
+    expect(() =>
+      createReservation({
+        id: createReservationId('reservation-1'),
+        movieProviderId: createMovieProviderId('provider-1'),
+        reservationRequestId: createReservationRequestId('request-1'),
+        screeningId: createScreeningId('screening-1'),
+        seatIds: [],
+        reservedByUserId: createUserId('user-1'),
+        confirmedAt: '2026-06-01T09:00:00.000Z',
+      }),
+    ).toThrow('Reservation must include at least one seat');
+  });
+
+  it('rejects duplicate seats in confirmed reservations', () => {
+    expect(() =>
+      createReservation({
+        id: createReservationId('reservation-1'),
+        movieProviderId: createMovieProviderId('provider-1'),
+        reservationRequestId: createReservationRequestId('request-1'),
+        screeningId: createScreeningId('screening-1'),
+        seatIds: [createSeatId('seat-a1'), createSeatId('seat-a1')],
+        reservedByUserId: createUserId('user-1'),
+        confirmedAt: '2026-06-01T09:00:00.000Z',
+      }),
+    ).toThrow('Reservation cannot include duplicate seats');
   });
 });

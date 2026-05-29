@@ -11,38 +11,86 @@ import type { ScreeningId } from '../../../domain/movie-reservations/screening-i
 import type { Seat } from '../../../domain/movie-reservations/seat';
 
 /**
- * Persistence port for movie reservation use cases.
+ * Persistence for movie reservations.
  *
- * Implementations can be in-memory, SQL, or remote adapters, but application
- * services depend only on this domain-shaped contract.
+ * Focuses on product-facing reservation/catalog persistence:
+ * - movies
+ * - screenings
+ * - seats
+ * - reservation requests
+ * - confirmed reservations
+ *
+ * Implementations can be in-memory, SQL, or remote adapters.
  */
 export interface MovieReservationRepository {
+  /**
+   * Finds the movie provider that owns a tenant-scoped catalog.
+   */
   findMovieProviderById(
     movieProviderId: MovieProviderId,
   ): Promise<MovieProvider | null>;
+
+  /**
+   * Lists movies visible inside one movie provider boundary.
+   */
   findMoviesByProviderId(
     movieProviderId: MovieProviderId,
   ): Promise<readonly Movie[]>;
+
+  /**
+   * Finds one movie only when it belongs to the requested provider.
+   */
   findMovieById(
     movieProviderId: MovieProviderId,
     movieId: MovieId,
   ): Promise<Movie | null>;
+
+  /**
+   * Lists scheduled screenings visible inside one movie provider boundary.
+   */
   findScreeningsByProviderId(
     movieProviderId: MovieProviderId,
   ): Promise<readonly Screening[]>;
+
+  /**
+   * Finds one screening only when it belongs to the requested provider.
+   */
   findScreeningForProvider(
     movieProviderId: MovieProviderId,
     screeningId: ScreeningId,
   ): Promise<Screening | null>;
+
+  /**
+   * Lists seats for the auditorium used by a provider-owned screening.
+   */
   findSeatsByScreeningId(
     movieProviderId: MovieProviderId,
     screeningId: ScreeningId,
   ): Promise<readonly Seat[]>;
+
+  /**
+   * Reads the reservation request status object by id.
+   */
   findReservationRequestById(
     reservationRequestId: ReservationRequestId,
   ): Promise<ReservationRequest | null>;
+
+  /**
+   * Persists a newly requested reservation request.
+   */
   saveReservationRequest(reservationRequest: ReservationRequest): Promise<void>;
+
+  /**
+   * Reads a confirmed reservation by reservation id.
+   */
   findReservationById(
     reservationId: ReservationId,
+  ): Promise<Reservation | null>;
+
+  /**
+   * Reads the confirmed reservation produced by a reservation request.
+   */
+  findReservationByReservationRequestId(
+    reservationRequestId: ReservationRequestId,
   ): Promise<Reservation | null>;
 }

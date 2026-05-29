@@ -11,10 +11,13 @@ import type {
   MovieReservationGraphqlContext,
 } from './presentation/graphql/graphql-context';
 import { MovieReservationsGraphqlModule } from './presentation/graphql/movie-reservations-graphql.module';
+import type { GraphqlOperationLogger } from './presentation/graphql/plugins/graphql-operation-logging.plugin';
+import { createGraphqlOperationLoggingPlugin } from './presentation/graphql/plugins/graphql-operation-logging.plugin';
 import { HealthModule } from './presentation/http/health.module';
 
 export interface AppModuleOptions {
   readonly authMode?: AuthMode;
+  readonly graphqlOperationLogger?: GraphqlOperationLogger;
 }
 
 @Module({})
@@ -43,6 +46,11 @@ export class AppModule {
       autoSchemaFile: generatedGraphqlSchemaPath,
       sortSchema: true,
       context: gqlContext,
+      plugins: [
+        createGraphqlOperationLoggingPlugin(options.graphqlOperationLogger),
+      ],
+      graphiql: config.ENABLE_GRAPHIQL,
+      playground: false,
     } satisfies ApolloDriverConfig;
 
     return {

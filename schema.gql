@@ -2,79 +2,218 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+"""
+Authenticated user and tenant context derived from the request authentication layer.
+"""
 type AuthenticatedUser {
+  """Email address from the authenticated profile."""
   email: String!
+
+  """
+  Movie provider id used as the tenant boundary for movie reservation data.
+  """
   movieProviderId: ID!
+
+  """Application roles assigned to the authenticated user."""
   roles: [UserRole!]!
+
+  """Authorization scopes attached to the authenticated request."""
   scopes: [String!]!
+
+  """Stable user id from the authentication provider or local profile."""
   userId: ID!
+
+  """Human-readable username from the authenticated profile."""
   username: String!
 }
 
+"""
+Movie title and metadata available within the authenticated movie provider.
+"""
 type Movie {
+  """Runtime of the movie in whole minutes."""
   durationMinutes: Int!
+
+  """Movie id within the movie provider."""
   id: ID!
+
+  """Content rating displayed for the movie."""
   rating: String!
+
+  """Display title of the movie."""
   title: String!
 }
 
 type Mutation {
-  requestReservation(input: RequestReservationInput!): ReservationRequest!
+  """
+  Creates an asynchronous reservation request and returns its initial status. Processing happens later through the internal reservation request processor.
+  """
+  requestReservation(
+    """
+    Screening and seat ids for the reservation request. Tenant scope comes from authentication, not from this input.
+    """
+    input: RequestReservationInput!
+  ): ReservationRequest!
 }
 
 type Query {
+  """
+  Returns the authenticated user and movie provider context for this request.
+  """
   me: AuthenticatedUser!
+
+  """
+  Lists movies available to the authenticated user within their movie provider.
+  """
   movies: [Movie!]!
-  reservation(id: ID!): Reservation
-  reservationRequestById(id: ID!): ReservationRequest
-  screenings(movieId: ID): [Screening!]!
+
+  """
+  Polls the status of a reservation request created by requestReservation.
+  """
+  reservationRequestStatus(
+    """Reservation request id returned by requestReservation."""
+    id: ID!
+  ): ReservationRequest
+
+  """
+  Fetches the confirmed reservation produced by a completed reservation request.
+  """
+  reservationResult(
+    """
+    Reservation request id returned by requestReservation. Returns null until the request is confirmed.
+    """
+    requestId: ID!
+  ): Reservation
+
+  """
+  Lists scheduled screenings, optionally filtered to one movie. The nested seats are the auditorium seats for the screening, not a dedicated availability calculation.
+  """
+  screenings(
+    """Optional movie id used to show screenings for one movie."""
+    movieId: ID
+  ): [Screening!]!
 }
 
+"""
+Input for creating a reservation request for one screening and one or more seats.
+"""
 input RequestReservationInput {
+  """Screening the user wants to reserve seats for."""
   screeningId: ID!
+
+  """
+  Seat ids requested for the screening. The whole request is rejected if any requested seat conflicts during processing.
+  """
   seatIds: [ID!]!
 }
 
+"""
+Final confirmed booking created after a reservation request is successfully processed.
+"""
 type Reservation {
+  """ISO 8601 UTC timestamp when the reservation was confirmed."""
   confirmedAt: String!
+
+  """
+  Confirmed reservation id. Clients usually reach this object through reservationResult(requestId).
+  """
   id: ID!
+
+  """Reservation request that produced this confirmed reservation."""
   reservationRequestId: ID!
+
+  """User id of the customer who owns the confirmed reservation."""
   reservedByUserId: ID!
+
+  """Screening reserved by this confirmed reservation."""
   screeningId: ID!
+
+  """Seat ids reserved for the screening."""
   seatIds: [ID!]!
 }
 
+"""Intent-driven command to reserve seats."""
 type ReservationRequest {
+  """
+  Reservation request id returned by requestReservation. Use this id with reservationRequestStatus to poll status and reservationResult to fetch the confirmed result.
+  """
   id: ID!
+
+  """User id of the authenticated user who created the request."""
   requestedByUserId: ID!
+
+  """Screening the user asked to reserve seats for."""
   screeningId: ID!
+
+  """Seat ids included in the reservation request."""
   seatIds: [ID!]!
+
+  """
+  Current processing status. Poll this field until it reaches CONFIRMED, REJECTED, or FAILED. Once it is CONFIRMED, call reservationResult with this request id.
+  """
   status: ReservationRequestStatus!
 }
 
+"""
+Lifecycle status for an asynchronous reservation request. Clients poll this status after requestReservation.
+"""
 enum ReservationRequestStatus {
+  """The request succeeded and produced a confirmed reservation."""
   CONFIRMED
+
+  """The request hit an unexpected internal processing failure."""
   FAILED
+
+  """The internal processor claimed the request and is working on it."""
   PROCESSING
+
+  """
+  The request was processed but could not be confirmed, usually because a requested seat was already reserved.
+  """
   REJECTED
+
+  """The API accepted the request and it is waiting for processing."""
   REQUESTED
 }
 
+"""
+Scheduled showing of a movie in an auditorium during a specific time window.
+"""
 type Screening {
+  """Auditorium where this screening takes place."""
   auditoriumId: ID!
+
+  """ISO 8601 UTC timestamp when the screening ends."""
   endsAt: String!
+
+  """Screening id used when requesting a reservation."""
   id: ID!
+
+  """Movie shown during this screening."""
   movieId: ID!
+
+  """
+  Auditorium seats for this screening. This is not yet a dedicated availability calculation.
+  """
   seats: [Seat!]!
+
+  """ISO 8601 UTC timestamp when the screening starts."""
   startsAt: String!
 }
 
+"""Seat position inside an auditorium."""
 type Seat {
+  """Seat id used in RequestReservationInput.seatIds."""
   id: ID!
+
+  """Seat number within the row."""
   number: Int!
+
+  """Seat row label."""
   row: String!
 }
 
+"""Application role assigned to the authenticated user."""
 enum UserRole {
   CUSTOMER
   SYSTEM

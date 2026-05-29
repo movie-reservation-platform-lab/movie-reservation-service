@@ -32,9 +32,10 @@ export interface CreateReservationRequestInput {
 }
 
 /**
- * Creates a reservation request and enforces the first domain invariants: a
- * request must include at least one selected seat, and each selected seat can
- * appear only once.
+ * Create a reservation request, enforce the first domain invariants
+ *
+ * a request must include at least one selected seat, and each selected
+ * seat can appear only once.
  */
 export function createReservationRequest(
   input: CreateReservationRequestInput,
@@ -51,76 +52,5 @@ export function createReservationRequest(
     ...input,
     seatIds: [...input.seatIds],
     status: ReservationRequestStatus.REQUESTED,
-  };
-}
-
-/**
- * Moves a requested reservation request into worker processing.
- */
-export function startProcessingReservationRequest(
-  request: ReservationRequest,
-): ReservationRequest {
-  return transitionReservationRequest(
-    request,
-    ReservationRequestStatus.PROCESSING,
-    [ReservationRequestStatus.REQUESTED],
-  );
-}
-
-/**
- * Confirms a processing reservation request.
- */
-export function confirmReservationRequest(
-  request: ReservationRequest,
-): ReservationRequest {
-  return transitionReservationRequest(
-    request,
-    ReservationRequestStatus.CONFIRMED,
-    [ReservationRequestStatus.PROCESSING],
-  );
-}
-
-/**
- * Rejects a processing reservation request because the requested seats cannot
- * be reserved.
- */
-export function rejectReservationRequest(
-  request: ReservationRequest,
-): ReservationRequest {
-  return transitionReservationRequest(
-    request,
-    ReservationRequestStatus.REJECTED,
-    [ReservationRequestStatus.PROCESSING],
-  );
-}
-
-/**
- * Marks a processing reservation request as failed because the processor hit an
- * unexpected technical or operational failure.
- */
-export function failReservationRequest(
-  request: ReservationRequest,
-): ReservationRequest {
-  return transitionReservationRequest(
-    request,
-    ReservationRequestStatus.FAILED,
-    [ReservationRequestStatus.PROCESSING],
-  );
-}
-
-function transitionReservationRequest(
-  request: ReservationRequest,
-  nextStatus: ReservationRequestStatus,
-  allowedStatuses: readonly ReservationRequestStatus[],
-): ReservationRequest {
-  if (!allowedStatuses.includes(request.status)) {
-    throw new Error(
-      `Cannot transition reservation request ${request.id} from ${request.status} to ${nextStatus}`,
-    );
-  }
-
-  return {
-    ...request,
-    status: nextStatus,
   };
 }

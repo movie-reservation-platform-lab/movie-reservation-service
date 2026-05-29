@@ -20,3 +20,33 @@ export interface Reservation {
   readonly reservedByUserId: UserId;
   readonly confirmedAt: string;
 }
+
+export interface CreateReservationInput {
+  readonly id: ReservationId;
+  readonly movieProviderId: MovieProviderId;
+  readonly reservationRequestId: ReservationRequestId;
+  readonly screeningId: ScreeningId;
+  readonly seatIds: readonly SeatId[];
+  readonly reservedByUserId: UserId;
+  readonly confirmedAt: string;
+}
+
+/**
+ * Factory to create reservation out of the input.
+ *
+ * @param input
+ */
+export function createReservation(input: CreateReservationInput): Reservation {
+  if (input.seatIds.length === 0) {
+    throw new Error('Reservation must include at least one seat');
+  }
+
+  if (new Set(input.seatIds).size !== input.seatIds.length) {
+    throw new Error('Reservation cannot include duplicate seats');
+  }
+
+  return {
+    ...input,
+    seatIds: [...input.seatIds],
+  };
+}
