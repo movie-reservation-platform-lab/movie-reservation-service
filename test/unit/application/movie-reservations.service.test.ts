@@ -9,6 +9,9 @@ import { UserRole } from '../../../src/domain/authentication/user-role';
 import { createMovieProviderId } from '../../../src/domain/movie-reservations/movie-provider-id';
 import { createReservationId } from '../../../src/domain/movie-reservations/reservation-id';
 import { createReservationRequestId } from '../../../src/domain/movie-reservations/reservation-request-id';
+import { createScreeningId } from '../../../src/domain/movie-reservations/screening-id';
+import { createSeatId } from '../../../src/domain/movie-reservations/seat-id';
+import { MOVIE_RESERVATION_DEMO_IDS } from '../../../src/infrastructure/fixtures/movie-reservations/movie-reservation-demo-data';
 import { InMemoryMovieReservationRepository } from '../../../src/infrastructure/repositories/in-memory/in-memory-movie-reservation.repository';
 
 describe('createActorContext', () => {
@@ -17,14 +20,16 @@ describe('createActorContext', () => {
       userId: createUserId('user-ada'),
       username: 'ada',
       email: 'ada@example.test',
-      movieProviderId: createMovieProviderId('provider-aurora'),
+      movieProviderId: createMovieProviderId(
+        '11111111-1111-4111-8111-111111111111',
+      ),
       roles: [UserRole.CUSTOMER],
       scopes: ['reservations:read'],
     });
 
     expect(actor).toEqual({
       userId: 'user-ada',
-      movieProviderId: 'provider-aurora',
+      movieProviderId: '11111111-1111-4111-8111-111111111111',
       roles: ['CUSTOMER'],
       scopes: ['reservations:read'],
     });
@@ -38,19 +43,22 @@ describe('MovieReservationsService authorization behavior', () => {
     const service = createService();
     const actor = createCustomerActor({
       userId: 'user-ada',
-      movieProviderId: 'provider-aurora',
+      movieProviderId: '11111111-1111-4111-8111-111111111111',
     });
 
     const actualReservation = await service.getReservation(
       actor,
-      createReservationId('reservation-aurora-ada'),
+      createReservationId('88888888-8888-4888-8888-888888888881'),
     );
 
     expect(actualReservation).toMatchObject({
-      id: 'reservation-aurora-ada',
-      movieProviderId: 'provider-aurora',
+      id: '88888888-8888-4888-8888-888888888881',
+      movieProviderId: '11111111-1111-4111-8111-111111111111',
       reservedByUserId: 'user-ada',
-      seatIds: ['seat-aurora-1-a1', 'seat-aurora-1-a2'],
+      seatIds: [
+        '66666666-6666-4666-8666-666666666661',
+        '66666666-6666-4666-8666-666666666662',
+      ],
     });
   });
 
@@ -58,12 +66,12 @@ describe('MovieReservationsService authorization behavior', () => {
     const service = createService();
     const actor = createCustomerActor({
       userId: 'user-ada',
-      movieProviderId: 'provider-aurora',
+      movieProviderId: '11111111-1111-4111-8111-111111111111',
     });
 
     const actualReservation = await service.getReservation(
       actor,
-      createReservationId('reservation-riverton-linus'),
+      createReservationId('88888888-8888-4888-8888-888888888882'),
     );
 
     expect(actualReservation).toBeNull();
@@ -73,12 +81,12 @@ describe('MovieReservationsService authorization behavior', () => {
     const service = createService();
     const actor = createCustomerActor({
       userId: 'user-grace',
-      movieProviderId: 'provider-aurora',
+      movieProviderId: '11111111-1111-4111-8111-111111111111',
     });
 
     const actualReservation = await service.getReservation(
       actor,
-      createReservationId('reservation-aurora-ada'),
+      createReservationId('88888888-8888-4888-8888-888888888881'),
     );
 
     expect(actualReservation).toBeNull();
@@ -90,20 +98,47 @@ describe('MovieReservationsService authorization behavior', () => {
       userId: createUserId('user-aurora-admin'),
       username: 'aurora-admin',
       email: 'admin@aurora.example.test',
-      movieProviderId: createMovieProviderId('provider-aurora'),
+      movieProviderId: createMovieProviderId(
+        '11111111-1111-4111-8111-111111111111',
+      ),
       roles: [UserRole.TENANT_ADMIN],
       scopes: [],
     });
 
     const actualReservation = await service.getReservation(
       actor,
-      createReservationId('reservation-aurora-ada'),
+      createReservationId('88888888-8888-4888-8888-888888888881'),
     );
 
     expect(actualReservation).toMatchObject({
-      id: 'reservation-aurora-ada',
+      id: '88888888-8888-4888-8888-888888888881',
       reservedByUserId: 'user-ada',
     });
+  });
+});
+
+describe('MovieReservationsService reservation requests', () => {
+  it('rejects a requested seat that does not belong to the screening auditorium', async () => {
+    const service = createService();
+    const actor = createCustomerActor({
+      userId: 'user-ada',
+      movieProviderId: MOVIE_RESERVATION_DEMO_IDS.providers.aurora,
+    });
+    const screeningId = createScreeningId(
+      MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
+    );
+    const rivertonSeatId = createSeatId(
+      MOVIE_RESERVATION_DEMO_IDS.seats.rivertonB3,
+    );
+
+    await expect(
+      service.requestReservation(actor, {
+        screeningId,
+        seatIds: [rivertonSeatId],
+      }),
+    ).rejects.toThrow(
+      `Seat ${rivertonSeatId} is not available for screening ${screeningId}`,
+    );
   });
 });
 
@@ -117,7 +152,7 @@ function createService(): MovieReservationsService {
 
 class StubReservationRequestIdGenerator implements ReservationRequestIdGenerator {
   generateReservationRequestId() {
-    return createReservationRequestId('request-test');
+    return createReservationRequestId('99999999-9999-4999-8999-999999999924');
   }
 }
 

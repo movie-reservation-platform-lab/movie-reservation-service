@@ -6,5 +6,6 @@ import type { MovieProviderId } from './movie-provider-id';
  */
 export interface MovieProvider {
   readonly id: MovieProviderId;
+  readonly code: string;
   readonly name: string;
 }

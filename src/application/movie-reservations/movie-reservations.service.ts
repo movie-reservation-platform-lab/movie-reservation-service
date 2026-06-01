@@ -59,16 +59,9 @@ export class MovieReservationsService {
     actor: ActorContext,
     input: { readonly movieId?: MovieId } = {},
   ): Promise<readonly Screening[]> {
-    const screenings = await this.repository.findScreeningsByProviderId(
+    return this.repository.findScreeningsByProviderId(
       actor.movieProviderId,
-    );
-
-    if (input.movieId === undefined) {
-      return screenings;
-    }
-
-    return screenings.filter(
-      (screening) => screening.movieId === input.movieId,
+      input,
     );
   }
 
@@ -82,6 +75,19 @@ export class MovieReservationsService {
     return this.repository.findSeatsByScreeningId(
       actor.movieProviderId,
       screeningId,
+    );
+  }
+
+  /**
+   * Batch-load auditorium seats for multiple provider-owned screenings.
+   */
+  async listSeatsForScreenings(
+    actor: ActorContext,
+    screeningIds: readonly ScreeningId[],
+  ): Promise<ReadonlyMap<ScreeningId, readonly Seat[]>> {
+    return this.repository.findSeatsByScreeningIds(
+      actor.movieProviderId,
+      screeningIds,
     );
   }
 
@@ -201,9 +207,10 @@ export class MovieReservationsService {
     actor: ActorContext,
     input: RequestReservationInput,
   ): Promise<void> {
-    const seats = await this.repository.findSeatsByScreeningId(
+    const seats = await this.repository.findSeatsByIdsForScreening(
       actor.movieProviderId,
       input.screeningId,
+      input.seatIds,
     );
     const availableSeatIds = new Set(seats.map((seat) => seat.id));
 

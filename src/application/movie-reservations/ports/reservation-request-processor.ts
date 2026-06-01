@@ -1,5 +1,6 @@
 import type { Reservation } from '../../../domain/movie-reservations/reservation';
 import type { ReservationRequest } from '../../../domain/movie-reservations/reservation-request';
+import type { ClaimedReservationRequest } from '../claimed-reservation-request';
 import type {
   ConfirmedReservationRequestProcessingAttempt,
   FailedReservationRequestProcessingAttempt,
@@ -22,7 +23,14 @@ export interface ReservationRequestProcessor {
    * processing mutation. Those runtime concerns can be added later around this
    * small contract.
    */
-  processNextPendingRequest(): Promise<ReservationRequestProcessingResult>;
+  processNextPendingRequest(
+    input?: ReservationRequestProcessingInput,
+  ): Promise<ReservationRequestProcessingResult>;
+}
+
+export interface ReservationRequestProcessingInput {
+  readonly claimToken?: string;
+  readonly onClaimed?: (claimedWorkItem: ClaimedReservationRequest) => void;
 }
 
 /**
@@ -47,6 +55,13 @@ export type ReservationRequestProcessingResult =
       readonly attempt: RejectedReservationRequestProcessingAttempt;
       readonly reservationRequest: ReservationRequest;
       readonly reason: 'seat-conflict';
+    }
+  | {
+      readonly outcome: 'retryable-failure';
+      readonly attempt: FailedReservationRequestProcessingAttempt;
+      readonly reservationRequest: ReservationRequest;
+      readonly reason: 'unexpected-error';
+      readonly attemptsRemaining: number;
     }
   | {
       readonly outcome: 'failed';

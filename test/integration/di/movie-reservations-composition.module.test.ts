@@ -38,7 +38,7 @@ describe('MovieReservationsCompositionModule', () => {
     expect(reservationsService).toBeInstanceOf(MovieReservationsService);
     await expect(
       repository.findMoviesByProviderId(
-        createMovieProviderId('provider-aurora'),
+        createMovieProviderId('11111111-1111-4111-8111-111111111111'),
       ),
     ).resolves.toHaveLength(2);
   });
@@ -59,7 +59,9 @@ describe('MovieReservationsCompositionModule', () => {
       userId: createUserId('local-dev-user'),
       username: 'local-dev-admin',
       email: 'local-dev@example.test',
-      movieProviderId: createMovieProviderId('provider-aurora'),
+      movieProviderId: createMovieProviderId(
+        '11111111-1111-4111-8111-111111111111',
+      ),
       roles: [UserRole.TENANT_ADMIN],
       scopes: ['reservations:read:tenant'],
     });
@@ -67,8 +69,8 @@ describe('MovieReservationsCompositionModule', () => {
     const reservationRequest = await reservationsService.requestReservation(
       actor,
       {
-        screeningId: createScreeningId('screening-aurora-1'),
-        seatIds: [createSeatId('seat-aurora-1-a3')],
+        screeningId: createScreeningId('55555555-5555-4555-8555-555555555551'),
+        seatIds: [createSeatId('66666666-6666-4666-8666-666666666663')],
       },
     );
 
@@ -105,7 +107,7 @@ describe('MovieReservationsCompositionModule', () => {
     ).resolves.toMatchObject({
       userId: 'local-dev-user',
       username: 'local-dev-admin',
-      movieProviderId: 'provider-aurora',
+      movieProviderId: '11111111-1111-4111-8111-111111111111',
       roles: ['TENANT_ADMIN'],
     });
   });
@@ -127,7 +129,7 @@ describe('MovieReservationsCompositionModule', () => {
           sub: 'user-grace',
           preferred_username: 'grace',
           email: 'grace@example.test',
-          movie_provider_id: 'provider-riverton',
+          movie_provider_id: '22222222-2222-4222-8222-222222222222',
           realm_access: { roles: ['CUSTOMER'] },
           scope: 'reservations:read',
         }),
@@ -135,7 +137,7 @@ describe('MovieReservationsCompositionModule', () => {
     ).resolves.toMatchObject({
       userId: 'user-grace',
       username: 'grace',
-      movieProviderId: 'provider-riverton',
+      movieProviderId: '22222222-2222-4222-8222-222222222222',
       roles: ['CUSTOMER'],
       scopes: ['reservations:read'],
     });

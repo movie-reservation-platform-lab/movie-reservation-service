@@ -9,6 +9,7 @@ import type { ReservationRequestId } from '../../../domain/movie-reservations/re
 import type { Screening } from '../../../domain/movie-reservations/screening';
 import type { ScreeningId } from '../../../domain/movie-reservations/screening-id';
 import type { Seat } from '../../../domain/movie-reservations/seat';
+import type { SeatId } from '../../../domain/movie-reservations/seat-id';
 
 /**
  * Persistence for movie reservations.
@@ -50,6 +51,7 @@ export interface MovieReservationRepository {
    */
   findScreeningsByProviderId(
     movieProviderId: MovieProviderId,
+    input?: { readonly movieId?: MovieId },
   ): Promise<readonly Screening[]>;
 
   /**
@@ -66,6 +68,24 @@ export interface MovieReservationRepository {
   findSeatsByScreeningId(
     movieProviderId: MovieProviderId,
     screeningId: ScreeningId,
+  ): Promise<readonly Seat[]>;
+
+  /**
+   * Batch-loads auditorium seats for provider-owned screenings.
+   */
+  findSeatsByScreeningIds(
+    movieProviderId: MovieProviderId,
+    screeningIds: readonly ScreeningId[],
+  ): Promise<ReadonlyMap<ScreeningId, readonly Seat[]>>;
+
+  /**
+   * Finds only the requested seats when they belong to a provider-owned
+   * screening's auditorium.
+   */
+  findSeatsByIdsForScreening(
+    movieProviderId: MovieProviderId,
+    screeningId: ScreeningId,
+    seatIds: readonly SeatId[],
   ): Promise<readonly Seat[]>;
 
   /**

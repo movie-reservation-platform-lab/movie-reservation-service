@@ -1,4 +1,4 @@
-import { createNonEmptyId } from './id-utils';
+import { createUuidId } from './id-utils';
 
 declare const seatIdBrand: unique symbol;
 
@@ -13,5 +13,5 @@ export type SeatId = string & {
 };
 
 export function createSeatId(value: string): SeatId {
-  return createNonEmptyId<SeatId>(value, 'SeatId');
+  return createUuidId<SeatId>(value, 'SeatId');
 }

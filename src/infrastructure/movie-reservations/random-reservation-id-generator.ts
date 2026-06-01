@@ -8,6 +8,6 @@ import {
 
 export class RandomReservationIdGenerator implements ReservationIdGenerator {
   generateReservationId(): ReservationId {
-    return createReservationId(`reservation-${randomUUID()}`);
+    return createReservationId(randomUUID());
   }
 }

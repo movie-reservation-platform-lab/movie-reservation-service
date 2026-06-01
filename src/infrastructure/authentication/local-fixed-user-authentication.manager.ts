@@ -3,6 +3,7 @@ import type { AuthenticatedUser } from '../../domain/authentication/authenticate
 import { createUserId } from '../../domain/authentication/user-id';
 import { UserRole } from '../../domain/authentication/user-role';
 import { createMovieProviderId } from '../../domain/movie-reservations/movie-provider-id';
+import { MOVIE_RESERVATION_DEMO_IDS } from '../fixtures/movie-reservations/movie-reservation-demo-data';
 
 /**
  * Development-only authentication manager that always returns the same user.
@@ -16,7 +17,10 @@ export class LocalFixedUserAuthenticationManager implements AuthenticationManage
       userId: createUserId('local-dev-user'),
       username: 'local-dev-admin',
       email: 'local-dev@example.test',
-      movieProviderId: createMovieProviderId('provider-aurora'),
+      movieProviderId: createMovieProviderId(
+        MOVIE_RESERVATION_DEMO_IDS.providers.aurora,
+      ),
+      movieProviderCode: MOVIE_RESERVATION_DEMO_IDS.providerCodes.aurora,
       roles: [UserRole.TENANT_ADMIN],
       scopes: ['reservations:read:tenant'],
     };

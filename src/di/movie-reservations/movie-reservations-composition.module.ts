@@ -1,4 +1,5 @@
 import { type DynamicModule, Module, type Provider } from '@nestjs/common';
+import knexFactory, { type Knex } from 'knex';
 
 import { AuthenticationService } from '../../application/authentication/authentication.service';
 import type { AuthenticationManager } from '../../application/authentication/authentication-manager';
@@ -12,30 +13,50 @@ import type { ReservationIdGenerator } from '../../application/movie-reservation
 import type { ReservationRequestIdGenerator } from '../../application/movie-reservations/ports/reservation-request-id-generator';
 import type { ReservationRequestProcessor } from '../../application/movie-reservations/ports/reservation-request-processor';
 import type { ReservationRequestWorkRepository } from '../../application/movie-reservations/ports/reservation-request-work-repository';
-import type { AuthMode } from '../../config';
+import {
+  config,
+  type AuthMode,
+  type PersistenceMode,
+  type ReservationWorkerMode,
+} from '../../config';
 import { JwtAuthenticationManager } from '../../infrastructure/authentication/jwt-authentication.manager';
 import { LocalFixedUserAuthenticationManager } from '../../infrastructure/authentication/local-fixed-user-authentication.manager';
 import { LocalJwtTokenValidationClient } from '../../infrastructure/authentication/local-jwt-token-validation.client';
+import {
+  createKnexConfig,
+  createPostgresConnectionSettings,
+} from '../../infrastructure/database/knex-config';
 import { RandomReservationIdGenerator } from '../../infrastructure/movie-reservations/random-reservation-id-generator';
 import { RandomReservationRequestIdGenerator } from '../../infrastructure/movie-reservations/random-reservation-request-id-generator';
 import { SystemClock } from '../../infrastructure/movie-reservations/system-clock';
 import { InMemoryMovieReservationRepository } from '../../infrastructure/repositories/in-memory/in-memory-movie-reservation.repository';
 import { InMemoryMovieReservationStore } from '../../infrastructure/repositories/in-memory/in-memory-movie-reservation.store';
 import { InMemoryReservationRequestWorkRepository } from '../../infrastructure/repositories/in-memory/in-memory-reservation-request-work.repository';
+import { PostgresMovieReservationRepository } from '../../infrastructure/repositories/postgres/postgres-movie-reservation.repository';
+import { PostgresReservationRequestWorkRepository } from '../../infrastructure/repositories/postgres/postgres-reservation-request-work.repository';
 import {
   AUTHENTICATION_MANAGER,
   CLOCK,
   IN_MEMORY_MOVIE_RESERVATION_STORE,
   MOVIE_RESERVATION_REPOSITORY,
+  POSTGRES_KNEX,
   RESERVATION_ID_GENERATOR,
   RESERVATION_REQUEST_ID_GENERATOR,
   RESERVATION_REQUEST_PROCESSOR,
   RESERVATION_REQUEST_WORK_REPOSITORY,
+  RESERVATION_WORKER_OPTIONS,
   TOKEN_VALIDATION_CLIENT,
 } from './movie-reservation.tokens';
+import {
+  FakeReservationRequestWorkerService,
+  type FakeReservationRequestWorkerOptions,
+} from './fake-reservation-request-worker.service';
+import { PostgresKnexLifecycleService } from './postgres-knex-lifecycle.service';
 
 export interface MovieReservationsCompositionOptions {
   readonly authMode: AuthMode;
+  readonly persistenceMode?: PersistenceMode;
+  readonly reservationWorkerMode?: ReservationWorkerMode;
 }
 
 /**
@@ -48,21 +69,12 @@ export interface MovieReservationsCompositionOptions {
 @Module({})
 export class MovieReservationsCompositionModule {
   static forRoot(options: MovieReservationsCompositionOptions): DynamicModule {
+    const persistenceMode = options.persistenceMode ?? 'in-memory';
+
     return {
       module: MovieReservationsCompositionModule,
       providers: createProviders(options),
-      exports: [
-        AuthenticationService,
-        AuthorizationService,
-        CLOCK,
-        IN_MEMORY_MOVIE_RESERVATION_STORE,
-        MOVIE_RESERVATION_REPOSITORY,
-        MovieReservationsService,
-        RESERVATION_ID_GENERATOR,
-        RESERVATION_REQUEST_ID_GENERATOR,
-        RESERVATION_REQUEST_PROCESSOR,
-        RESERVATION_REQUEST_WORK_REPOSITORY,
-      ],
+      exports: createExports(persistenceMode),
     };
   }
 }
@@ -74,30 +86,14 @@ export class MovieReservationsCompositionModule {
 function createProviders(
   options: MovieReservationsCompositionOptions,
 ): Provider[] {
+  const persistenceMode = options.persistenceMode ?? 'in-memory';
+  const reservationWorkerMode =
+    options.reservationWorkerMode ?? config.RESERVATION_WORKER_MODE;
+
   return [
     ...createAuthenticationProviders(options.authMode),
     AuthorizationService,
-    {
-      provide: IN_MEMORY_MOVIE_RESERVATION_STORE,
-      useFactory: (): InMemoryMovieReservationStore =>
-        InMemoryMovieReservationStore.withSeedData(),
-    },
-    {
-      provide: MOVIE_RESERVATION_REPOSITORY,
-      useFactory: (
-        store: InMemoryMovieReservationStore,
-      ): MovieReservationRepository =>
-        new InMemoryMovieReservationRepository(store),
-      inject: [IN_MEMORY_MOVIE_RESERVATION_STORE],
-    },
-    {
-      provide: RESERVATION_REQUEST_WORK_REPOSITORY,
-      useFactory: (
-        store: InMemoryMovieReservationStore,
-      ): ReservationRequestWorkRepository =>
-        new InMemoryReservationRequestWorkRepository(store),
-      inject: [IN_MEMORY_MOVIE_RESERVATION_STORE],
-    },
+    ...createPersistenceProviders(persistenceMode),
     {
       provide: RESERVATION_ID_GENERATOR,
       useFactory: (): ReservationIdGenerator =>
@@ -123,6 +119,13 @@ function createProviders(
           workRepository,
           reservationIdGenerator,
           clock,
+          {
+            workerId: 'fake-in-process-reservation-worker',
+            claimLeaseMs: config.RESERVATION_WORKER_LEASE_MS,
+            maxLeaseTimeouts: config.RESERVATION_WORKER_MAX_LEASE_TIMEOUTS,
+            maxTransientFailures:
+              config.RESERVATION_WORKER_MAX_TRANSIENT_FAILURES,
+          },
         ),
       inject: [
         RESERVATION_REQUEST_WORK_REPOSITORY,
@@ -130,6 +133,7 @@ function createProviders(
         CLOCK,
       ],
     },
+    ...createReservationWorkerProviders(reservationWorkerMode),
     {
       provide: MovieReservationsService,
       useFactory: (
@@ -148,6 +152,98 @@ function createProviders(
         RESERVATION_REQUEST_ID_GENERATOR,
       ],
     },
+  ];
+}
+
+function createReservationWorkerProviders(
+  reservationWorkerMode: ReservationWorkerMode,
+): Provider[] {
+  if (reservationWorkerMode === 'disabled') {
+    return [];
+  }
+
+  const workerOptions: FakeReservationRequestWorkerOptions = {
+    pollIntervalMs: config.RESERVATION_WORKER_POLL_INTERVAL_MS,
+    claimLeaseMs: config.RESERVATION_WORKER_LEASE_MS,
+    heartbeatIntervalMs: config.RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS,
+  };
+
+  return [
+    {
+      provide: RESERVATION_WORKER_OPTIONS,
+      useValue: workerOptions,
+    },
+    FakeReservationRequestWorkerService,
+  ];
+}
+
+function createPersistenceProviders(
+  persistenceMode: PersistenceMode,
+): Provider[] {
+  if (persistenceMode === 'postgres') {
+    return [
+      {
+        provide: POSTGRES_KNEX,
+        useFactory: (): Knex =>
+          knexFactory(
+            createKnexConfig(createPostgresConnectionSettings(config)),
+          ),
+      },
+      PostgresKnexLifecycleService,
+      {
+        provide: MOVIE_RESERVATION_REPOSITORY,
+        useFactory: (database: Knex): MovieReservationRepository =>
+          new PostgresMovieReservationRepository(database),
+        inject: [POSTGRES_KNEX],
+      },
+      {
+        provide: RESERVATION_REQUEST_WORK_REPOSITORY,
+        useFactory: (database: Knex): ReservationRequestWorkRepository =>
+          new PostgresReservationRequestWorkRepository(database),
+        inject: [POSTGRES_KNEX],
+      },
+    ];
+  }
+
+  return [
+    {
+      provide: IN_MEMORY_MOVIE_RESERVATION_STORE,
+      useFactory: (): InMemoryMovieReservationStore =>
+        InMemoryMovieReservationStore.withSeedData(),
+    },
+    {
+      provide: MOVIE_RESERVATION_REPOSITORY,
+      useFactory: (
+        store: InMemoryMovieReservationStore,
+      ): MovieReservationRepository =>
+        new InMemoryMovieReservationRepository(store),
+      inject: [IN_MEMORY_MOVIE_RESERVATION_STORE],
+    },
+    {
+      provide: RESERVATION_REQUEST_WORK_REPOSITORY,
+      useFactory: (
+        store: InMemoryMovieReservationStore,
+      ): ReservationRequestWorkRepository =>
+        new InMemoryReservationRequestWorkRepository(store),
+      inject: [IN_MEMORY_MOVIE_RESERVATION_STORE],
+    },
+  ];
+}
+
+function createExports(persistenceMode: PersistenceMode) {
+  return [
+    AuthenticationService,
+    AuthorizationService,
+    CLOCK,
+    ...(persistenceMode === 'in-memory'
+      ? [IN_MEMORY_MOVIE_RESERVATION_STORE]
+      : [POSTGRES_KNEX]),
+    MOVIE_RESERVATION_REPOSITORY,
+    MovieReservationsService,
+    RESERVATION_ID_GENERATOR,
+    RESERVATION_REQUEST_ID_GENERATOR,
+    RESERVATION_REQUEST_PROCESSOR,
+    RESERVATION_REQUEST_WORK_REPOSITORY,
   ];
 }
 

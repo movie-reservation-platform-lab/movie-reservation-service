@@ -11,6 +11,6 @@ import {
  */
 export class RandomReservationRequestIdGenerator implements ReservationRequestIdGenerator {
   generateReservationRequestId(): ReservationRequestId {
-    return createReservationRequestId(`request-${randomUUID()}`);
+    return createReservationRequestId(randomUUID());
   }
 }

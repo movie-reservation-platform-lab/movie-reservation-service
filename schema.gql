@@ -10,6 +10,11 @@ type AuthenticatedUser {
   email: String!
 
   """
+  Optional human-readable movie provider code from authentication claims.
+  """
+  movieProviderCode: String
+
+  """
   Movie provider id used as the tenant boundary for movie reservation data.
   """
   movieProviderId: ID!

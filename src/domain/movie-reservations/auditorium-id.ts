@@ -1,4 +1,4 @@
-import { createNonEmptyId } from './id-utils';
+import { createUuidId } from './id-utils';
 
 declare const auditoriumIdBrand: unique symbol;
 
@@ -13,5 +13,5 @@ export type AuditoriumId = string & {
 };
 
 export function createAuditoriumId(value: string): AuditoriumId {
-  return createNonEmptyId<AuditoriumId>(value, 'AuditoriumId');
+  return createUuidId<AuditoriumId>(value, 'AuditoriumId');
 }

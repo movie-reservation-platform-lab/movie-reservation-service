@@ -27,12 +27,12 @@ import { InMemoryReservationRequestWorkRepository } from '../../../src/infrastru
 describe('InProcessReservationRequestProcessor', () => {
   it('claims the lowest-sequence pending request and confirms it', async () => {
     const firstRequest = createRequestedReservationRequest({
-      id: 'request-first',
-      seatIds: ['seat-a1'],
+      id: '99999999-9999-4999-8999-999999999911',
+      seatIds: ['99999999-9999-4999-8999-999999999903'],
     });
     const secondRequest = createRequestedReservationRequest({
-      id: 'request-second',
-      seatIds: ['seat-a2'],
+      id: '99999999-9999-4999-8999-999999999912',
+      seatIds: ['99999999-9999-4999-8999-999999999904'],
     });
     const store = createStore({
       reservationRequests: [firstRequest, secondRequest],
@@ -41,7 +41,7 @@ describe('InProcessReservationRequestProcessor', () => {
     const workRepository = new InMemoryReservationRequestWorkRepository(store);
     const processor = createProcessor({
       workRepository,
-      reservationIds: ['reservation-first'],
+      reservationIds: ['99999999-9999-4999-8999-999999999913'],
       clockInstants: [
         '2026-06-01T09:00:00.000Z',
         '2026-06-01T09:00:01.000Z',
@@ -54,40 +54,40 @@ describe('InProcessReservationRequestProcessor', () => {
     expect(actualResult).toMatchObject({
       outcome: 'confirmed',
       reservationRequest: {
-        id: 'request-first',
+        id: '99999999-9999-4999-8999-999999999911',
         status: ReservationRequestStatus.CONFIRMED,
       },
       reservation: {
-        id: 'reservation-first',
-        reservationRequestId: 'request-first',
-        seatIds: ['seat-a1'],
+        id: '99999999-9999-4999-8999-999999999913',
+        reservationRequestId: '99999999-9999-4999-8999-999999999911',
+        seatIds: ['99999999-9999-4999-8999-999999999903'],
         confirmedAt: '2026-06-01T09:00:01.000Z',
       },
       attempt: {
-        reservationRequestId: 'request-first',
+        reservationRequestId: '99999999-9999-4999-8999-999999999911',
         sequence: 1,
         startedAt: '2026-06-01T09:00:00.000Z',
         completedAt: '2026-06-01T09:00:02.000Z',
         outcome: 'confirmed',
-        reservationId: 'reservation-first',
+        reservationId: '99999999-9999-4999-8999-999999999913',
       },
     });
     await expect(
       repository.findReservationRequestById(
-        createReservationRequestId('request-second'),
+        createReservationRequestId('99999999-9999-4999-8999-999999999912'),
       ),
     ).resolves.toMatchObject({
-      id: 'request-second',
+      id: '99999999-9999-4999-8999-999999999912',
       status: ReservationRequestStatus.REQUESTED,
     });
     await expect(
       workRepository.findReservationRequestProcessingAttemptsByRequestId(
-        createReservationRequestId('request-first'),
+        createReservationRequestId('99999999-9999-4999-8999-999999999911'),
       ),
     ).resolves.toEqual([
       expect.objectContaining({
         outcome: 'confirmed',
-        reservationId: 'reservation-first',
+        reservationId: '99999999-9999-4999-8999-999999999913',
         sequence: 1,
       }),
     ]);
@@ -95,17 +95,24 @@ describe('InProcessReservationRequestProcessor', () => {
 
   it('rejects the whole claimed request when any requested seat conflicts', async () => {
     const conflictingReservation = createReservation({
-      id: createReservationId('reservation-existing'),
-      movieProviderId: createMovieProviderId('provider-1'),
-      reservationRequestId: createReservationRequestId('request-existing'),
-      screeningId: createScreeningId('screening-1'),
-      seatIds: [createSeatId('seat-a1')],
+      id: createReservationId('99999999-9999-4999-8999-999999999914'),
+      movieProviderId: createMovieProviderId(
+        '99999999-9999-4999-8999-999999999901',
+      ),
+      reservationRequestId: createReservationRequestId(
+        '99999999-9999-4999-8999-999999999915',
+      ),
+      screeningId: createScreeningId('99999999-9999-4999-8999-999999999902'),
+      seatIds: [createSeatId('99999999-9999-4999-8999-999999999903')],
       reservedByUserId: createUserId('user-existing'),
       confirmedAt: '2026-06-01T08:59:00.000Z',
     });
     const pendingRequest = createRequestedReservationRequest({
-      id: 'request-conflicting',
-      seatIds: ['seat-a1', 'seat-a2'],
+      id: '99999999-9999-4999-8999-999999999916',
+      seatIds: [
+        '99999999-9999-4999-8999-999999999903',
+        '99999999-9999-4999-8999-999999999904',
+      ],
     });
     const store = createStore({
       reservationRequests: [pendingRequest],
@@ -115,7 +122,7 @@ describe('InProcessReservationRequestProcessor', () => {
     const workRepository = new InMemoryReservationRequestWorkRepository(store);
     const processor = createProcessor({
       workRepository,
-      reservationIds: ['reservation-unused'],
+      reservationIds: ['99999999-9999-4999-8999-999999999917'],
       clockInstants: ['2026-06-01T09:00:00.000Z', '2026-06-01T09:00:01.000Z'],
     });
 
@@ -125,19 +132,21 @@ describe('InProcessReservationRequestProcessor', () => {
       outcome: 'rejected',
       reason: 'seat-conflict',
       reservationRequest: {
-        id: 'request-conflicting',
+        id: '99999999-9999-4999-8999-999999999916',
         status: ReservationRequestStatus.REJECTED,
       },
       attempt: {
-        reservationRequestId: 'request-conflicting',
+        reservationRequestId: '99999999-9999-4999-8999-999999999916',
         sequence: 1,
         outcome: 'rejected',
         reason: 'seat-conflict',
-        conflictingReservationId: 'reservation-existing',
+        conflictingReservationId: '99999999-9999-4999-8999-999999999914',
       },
     });
     await expect(
-      repository.findReservationById(createReservationId('reservation-unused')),
+      repository.findReservationById(
+        createReservationId('99999999-9999-4999-8999-999999999917'),
+      ),
     ).resolves.toBeNull();
   });
 
@@ -145,8 +154,8 @@ describe('InProcessReservationRequestProcessor', () => {
     const terminalRequest = confirmReservationRequest(
       startProcessingReservationRequest(
         createRequestedReservationRequest({
-          id: 'request-terminal',
-          seatIds: ['seat-a1'],
+          id: '99999999-9999-4999-8999-999999999918',
+          seatIds: ['99999999-9999-4999-8999-999999999903'],
         }),
       ),
     );
@@ -154,7 +163,7 @@ describe('InProcessReservationRequestProcessor', () => {
     const workRepository = new InMemoryReservationRequestWorkRepository(store);
     const processor = createProcessor({
       workRepository,
-      reservationIds: ['reservation-unused'],
+      reservationIds: ['99999999-9999-4999-8999-999999999917'],
       clockInstants: ['2026-06-01T09:00:00.000Z'],
     });
 
@@ -163,23 +172,24 @@ describe('InProcessReservationRequestProcessor', () => {
     });
     await expect(
       workRepository.findReservationRequestProcessingAttemptsByRequestId(
-        createReservationRequestId('request-terminal'),
+        createReservationRequestId('99999999-9999-4999-8999-999999999918'),
       ),
     ).resolves.toEqual([]);
   });
 
-  it('marks a claimed request as failed when processing fails after claim', async () => {
+  it('marks a claimed request as failed when the final attempt fails after claim', async () => {
     const pendingRequest = createRequestedReservationRequest({
-      id: 'request-fails-after-claim',
-      seatIds: ['seat-a1'],
+      id: '99999999-9999-4999-8999-999999999919',
+      seatIds: ['99999999-9999-4999-8999-999999999903'],
     });
     const store = createStore({ reservationRequests: [pendingRequest] });
     const repository = new InMemoryMovieReservationRepository(store);
     const workRepository = new ThrowingConflictLookupWorkRepository(store);
     const processor = createProcessor({
       workRepository,
-      reservationIds: ['reservation-unused'],
+      reservationIds: ['99999999-9999-4999-8999-999999999917'],
       clockInstants: ['2026-06-01T09:00:00.000Z', '2026-06-01T09:00:01.000Z'],
+      maxTransientFailures: 1,
     });
 
     const actualResult = await processor.processNextPendingRequest();
@@ -188,11 +198,11 @@ describe('InProcessReservationRequestProcessor', () => {
       outcome: 'failed',
       reason: 'unexpected-error',
       reservationRequest: {
-        id: 'request-fails-after-claim',
+        id: '99999999-9999-4999-8999-999999999919',
         status: ReservationRequestStatus.FAILED,
       },
       attempt: {
-        reservationRequestId: 'request-fails-after-claim',
+        reservationRequestId: '99999999-9999-4999-8999-999999999919',
         sequence: 1,
         outcome: 'failed',
         reason: 'unexpected-error',
@@ -200,11 +210,70 @@ describe('InProcessReservationRequestProcessor', () => {
     });
     await expect(
       repository.findReservationRequestById(
-        createReservationRequestId('request-fails-after-claim'),
+        createReservationRequestId('99999999-9999-4999-8999-999999999919'),
       ),
     ).resolves.toMatchObject({
       status: ReservationRequestStatus.FAILED,
     });
+  });
+
+  it('records unexpected failures as retryable until max transient failures is reached', async () => {
+    const pendingRequest = createRequestedReservationRequest({
+      id: '99999999-9999-4999-8999-999999999925',
+      seatIds: ['99999999-9999-4999-8999-999999999903'],
+    });
+    const store = createStore({ reservationRequests: [pendingRequest] });
+    const repository = new InMemoryMovieReservationRepository(store);
+    const workRepository = new ThrowingConflictLookupWorkRepository(store);
+    const processor = createProcessor({
+      workRepository,
+      reservationIds: [],
+      clockInstants: [
+        '2026-06-01T09:00:00.000Z',
+        '2026-06-01T09:00:01.000Z',
+        '2026-06-01T09:00:02.000Z',
+        '2026-06-01T09:00:03.000Z',
+      ],
+      maxTransientFailures: 2,
+    });
+
+    await expect(processor.processNextPendingRequest()).resolves.toMatchObject({
+      outcome: 'retryable-failure',
+      attemptsRemaining: 1,
+      reservationRequest: {
+        id: '99999999-9999-4999-8999-999999999925',
+        status: ReservationRequestStatus.REQUESTED,
+      },
+      attempt: {
+        sequence: 1,
+        outcome: 'failed',
+        reason: 'unexpected-error',
+      },
+    });
+    await expect(processor.processNextPendingRequest()).resolves.toMatchObject({
+      outcome: 'failed',
+      reservationRequest: {
+        id: '99999999-9999-4999-8999-999999999925',
+        status: ReservationRequestStatus.FAILED,
+      },
+      attempt: {
+        sequence: 1,
+        outcome: 'failed',
+        reason: 'unexpected-error',
+      },
+    });
+    await expect(
+      repository.findReservationRequestById(
+        createReservationRequestId('99999999-9999-4999-8999-999999999925'),
+      ),
+    ).resolves.toMatchObject({
+      status: ReservationRequestStatus.FAILED,
+    });
+    await expect(
+      workRepository.findReservationRequestProcessingAttemptsByRequestId(
+        createReservationRequestId('99999999-9999-4999-8999-999999999925'),
+      ),
+    ).resolves.toHaveLength(2);
   });
 });
 
@@ -270,11 +339,19 @@ function createProcessor(input: {
   readonly workRepository: ReservationRequestWorkRepository;
   readonly reservationIds: readonly string[];
   readonly clockInstants: readonly string[];
+  readonly maxTransientFailures?: number;
 }): InProcessReservationRequestProcessor {
   return new InProcessReservationRequestProcessor(
     input.workRepository,
     new StubReservationIdGenerator(input.reservationIds),
     new SequenceClock(input.clockInstants),
+    {
+      workerId: 'test-worker',
+      claimLeaseMs: 30_000,
+      maxLeaseTimeouts: 3,
+      maxTransientFailures: input.maxTransientFailures ?? 3,
+      createClaimToken: () => 'test-claim-token',
+    },
   );
 }
 
@@ -309,8 +386,10 @@ function createRequestedReservationRequest(input: {
 }): ReservationRequest {
   return createReservationRequest({
     id: createReservationRequestId(input.id),
-    movieProviderId: createMovieProviderId('provider-1'),
-    screeningId: createScreeningId('screening-1'),
+    movieProviderId: createMovieProviderId(
+      '99999999-9999-4999-8999-999999999901',
+    ),
+    screeningId: createScreeningId('99999999-9999-4999-8999-999999999902'),
     seatIds: input.seatIds.map(createSeatId),
     requestedByUserId: createUserId('user-1'),
   });

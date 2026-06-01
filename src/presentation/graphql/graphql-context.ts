@@ -20,9 +20,9 @@ export interface GraphqlHttpRequest {
 /**
  * Authenticated GraphQL context made available to resolvers.
  *
- * `authenticatedUser` exposes the normalized identity for user-facing fields,
- * while `actor` is the smaller business context used by application use cases,
- * logging, tracing, and future tenant routing.
+ * `authenticatedUser` exposes the normalized identity for user-facing fields
+ * and human-readable observability labels. `actor` is the smaller business
+ * context used by application use cases and future tenant routing.
  */
 export interface MovieReservationGraphqlContext {
   readonly req: GraphqlHttpRequest;

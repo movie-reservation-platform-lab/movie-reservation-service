@@ -10,7 +10,8 @@ describe('parseMovieReservationClaims', () => {
         sub: 'user-ada',
         preferred_username: 'ada',
         email: 'ada@aurora.example.test',
-        movie_provider_id: 'provider-aurora',
+        movie_provider_id: '11111111-1111-4111-8111-111111111111',
+        movie_provider_code: 'aurora-silver-maple',
       }),
     );
 
@@ -18,7 +19,8 @@ describe('parseMovieReservationClaims', () => {
       userId: 'user-ada',
       username: 'ada',
       email: 'ada@aurora.example.test',
-      movieProviderId: 'provider-aurora',
+      movieProviderId: '11111111-1111-4111-8111-111111111111',
+      movieProviderCode: 'aurora-silver-maple',
       roles: [],
       scopes: [],
     });
@@ -116,13 +118,39 @@ describe('parseMovieReservationClaims', () => {
         }),
       ),
     ).toThrow('Invalid token claims');
+
+    expect(() =>
+      parseMovieReservationClaims(
+        validClaims({
+          movie_provider_id: 'provider-aurora',
+        }),
+      ),
+    ).toThrow('Invalid token claims');
+  });
+
+  it('rejects malformed provider code claims', () => {
+    expect(() =>
+      parseMovieReservationClaims(
+        validClaims({
+          movie_provider_code: 'Aurora Silver Maple',
+        }),
+      ),
+    ).toThrow('Invalid token claims');
+
+    expect(() =>
+      parseMovieReservationClaims(
+        validClaims({
+          movie_provider_code: 'aurora\nmovieProviderCode=forged',
+        }),
+      ),
+    ).toThrow('Invalid token claims');
   });
 });
 
 function validClaims(overrides: JwtClaims = {}): JwtClaims {
   return {
     sub: 'user-ada',
-    movie_provider_id: 'provider-aurora',
+    movie_provider_id: '11111111-1111-4111-8111-111111111111',
     ...overrides,
   };
 }

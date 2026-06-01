@@ -1,9 +1,12 @@
+import { randomUUID } from 'node:crypto';
+
 import { createReservation } from '../../domain/movie-reservations/reservation';
 import type { ClaimedReservationRequest } from './claimed-reservation-request';
 import type { Clock } from './ports/clock';
 import type { ReservationIdGenerator } from './ports/reservation-id-generator';
 import type {
   ReservationRequestProcessor,
+  ReservationRequestProcessingInput,
   ReservationRequestProcessingResult,
 } from './ports/reservation-request-processor';
 import type { ReservationRequestWorkRepository } from './ports/reservation-request-work-repository';
@@ -12,6 +15,22 @@ import type {
   FailedReservationRequestProcessingAttempt,
   RejectedReservationRequestProcessingAttempt,
 } from './reservation-request-processing-attempt';
+
+export interface InProcessReservationRequestProcessorOptions {
+  readonly workerId: string;
+  readonly claimLeaseMs: number;
+  readonly maxLeaseTimeouts: number;
+  readonly maxTransientFailures: number;
+  readonly createClaimToken?: () => string;
+}
+
+const defaultProcessorOptions: InProcessReservationRequestProcessorOptions = {
+  workerId: 'manual-in-process-reservation-processor',
+  claimLeaseMs: 30_000,
+  maxLeaseTimeouts: 3,
+  maxTransientFailures: 3,
+  createClaimToken: randomUUID,
+};
 
 /**
  * Application processor that runs reservation request work inside the current
@@ -22,27 +41,35 @@ import type {
  * because it orchestrates domain rules through ports; infrastructure supplies
  * the concrete repository, clock, and id generator.
  *
- * TODO(D5 follow-up): terminal state transitions and attempt recording are not
- *  transactional yet. A durable worker should make confirm/reject/fail plus
- *  attempt history atomic, or use an outbox/observability pipeline so a
- *  terminal request is not later misclassified because history recording failed.
  */
 export class InProcessReservationRequestProcessor implements ReservationRequestProcessor {
   constructor(
     private readonly workRepository: ReservationRequestWorkRepository,
     private readonly reservationIdGenerator: ReservationIdGenerator,
     private readonly clock: Clock,
+    private readonly options: InProcessReservationRequestProcessorOptions = defaultProcessorOptions,
   ) {}
 
-  async processNextPendingRequest(): Promise<ReservationRequestProcessingResult> {
+  async processNextPendingRequest(
+    input: ReservationRequestProcessingInput = {},
+  ): Promise<ReservationRequestProcessingResult> {
+    const startedAt = this.clock.nowIsoString();
     const claimedWorkItem =
-      await this.workRepository.claimNextPendingReservationRequest();
+      await this.workRepository.claimNextPendingReservationRequest({
+        workerId: this.options.workerId,
+        claimToken:
+          input.claimToken ?? this.options.createClaimToken?.() ?? randomUUID(),
+        claimedAt: startedAt,
+        claimExpiresAt: addMilliseconds(startedAt, this.options.claimLeaseMs),
+        maxLeaseTimeouts: this.options.maxLeaseTimeouts,
+        maxTransientFailures: this.options.maxTransientFailures,
+      });
 
     if (claimedWorkItem === null) {
       return { outcome: 'no-pending-request' };
     }
 
-    const startedAt = this.clock.nowIsoString();
+    input.onClaimed?.(claimedWorkItem);
     let terminalStatePersisted = false;
 
     try {
@@ -53,14 +80,8 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
         });
 
       if (conflict !== null) {
-        const reservationRequest =
-          await this.workRepository.rejectClaimedReservationRequest({
-            claimedWorkItem,
-            reason: 'seat-conflict',
-          });
-        terminalStatePersisted = true;
         const attempt: RejectedReservationRequestProcessingAttempt = {
-          reservationRequestId: reservationRequest.id,
+          reservationRequestId: claimedWorkItem.reservationRequest.id,
           sequence: claimedWorkItem.sequence,
           startedAt,
           completedAt: this.clock.nowIsoString(),
@@ -68,10 +89,13 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
           reason: 'seat-conflict',
           conflictingReservationId: conflict.id,
         };
-
-        await this.workRepository.recordReservationRequestProcessingAttempt(
-          attempt,
-        );
+        const reservationRequest =
+          await this.workRepository.rejectClaimedReservationRequest({
+            claimedWorkItem,
+            reason: 'seat-conflict',
+            attempt,
+          });
+        terminalStatePersisted = true;
 
         return {
           outcome: 'rejected',
@@ -90,29 +114,35 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
         reservedByUserId: claimedWorkItem.reservationRequest.requestedByUserId,
         confirmedAt: this.clock.nowIsoString(),
       });
-      const reservationRequest =
-        await this.workRepository.confirmClaimedReservationRequest({
-          claimedWorkItem,
-          reservation,
-        });
-      terminalStatePersisted = true;
       const attempt: ConfirmedReservationRequestProcessingAttempt = {
-        reservationRequestId: reservationRequest.id,
+        reservationRequestId: claimedWorkItem.reservationRequest.id,
         sequence: claimedWorkItem.sequence,
         startedAt,
         completedAt: this.clock.nowIsoString(),
         outcome: 'confirmed',
         reservationId: reservation.id,
       };
+      const confirmResult =
+        await this.workRepository.confirmClaimedReservationRequest({
+          claimedWorkItem,
+          reservation,
+          attempt,
+        });
+      terminalStatePersisted = true;
 
-      await this.workRepository.recordReservationRequestProcessingAttempt(
-        attempt,
-      );
+      if (confirmResult.outcome === 'rejected') {
+        return {
+          outcome: 'rejected',
+          attempt: confirmResult.attempt,
+          reservationRequest: confirmResult.reservationRequest,
+          reason: 'seat-conflict',
+        };
+      }
 
       return {
         outcome: 'confirmed',
         attempt,
-        reservationRequest,
+        reservationRequest: confirmResult.reservationRequest,
         reservation,
       };
     } catch (error) {
@@ -120,25 +150,27 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
         throw error;
       }
 
-      return this.failClaimedRequest(claimedWorkItem, startedAt);
+      return this.handleUnexpectedFailure(claimedWorkItem, startedAt);
     }
   }
 
   /**
-   * Records a terminal FAILED outcome after processing a claimed request aborts
-   * before CONFIRMED or REJECTED state was persisted.
+   * Records an unexpected internal failure.
+   *
+   * Seat conflicts stay terminal REJECTED. The current logic
+   * treats `unexpected-error` as a coarse transient bucket because all known
+   * business failures are handled before this catch block.
+   *
+   * TODO: Replace this catch-all with explicit retryable/non-retryable
+   *  classification before adding real external dependencies such as payment,
+   *  provider inventory, or notification calls.
    */
-  private async failClaimedRequest(
+  private async handleUnexpectedFailure(
     claimedWorkItem: ClaimedReservationRequest,
     startedAt: string,
   ): Promise<ReservationRequestProcessingResult> {
-    const reservationRequest =
-      await this.workRepository.failClaimedReservationRequest({
-        claimedWorkItem,
-        reason: 'unexpected-error',
-      });
     const attempt: FailedReservationRequestProcessingAttempt = {
-      reservationRequestId: reservationRequest.id,
+      reservationRequestId: claimedWorkItem.reservationRequest.id,
       sequence: claimedWorkItem.sequence,
       startedAt,
       completedAt: this.clock.nowIsoString(),
@@ -146,9 +178,32 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
       reason: 'unexpected-error',
     };
 
-    await this.workRepository.recordReservationRequestProcessingAttempt(
-      attempt,
-    );
+    const nextTransientFailureCount = claimedWorkItem.transientFailureCount + 1;
+
+    if (nextTransientFailureCount < this.options.maxTransientFailures) {
+      const reservationRequest =
+        await this.workRepository.releaseClaimedReservationRequestForRetry({
+          claimedWorkItem,
+          reason: 'unexpected-error',
+          attempt,
+        });
+
+      return {
+        outcome: 'retryable-failure',
+        attempt,
+        reservationRequest,
+        reason: 'unexpected-error',
+        attemptsRemaining:
+          this.options.maxTransientFailures - nextTransientFailureCount,
+      };
+    }
+
+    const reservationRequest =
+      await this.workRepository.failClaimedReservationRequest({
+        claimedWorkItem,
+        reason: 'unexpected-error',
+        attempt,
+      });
 
     return {
       outcome: 'failed',
@@ -157,4 +212,8 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
       reason: 'unexpected-error',
     };
   }
+}
+
+function addMilliseconds(isoString: string, milliseconds: number): string {
+  return new Date(new Date(isoString).getTime() + milliseconds).toISOString();
 }

@@ -46,12 +46,15 @@ export interface RejectedReservationRequestProcessingAttempt extends Reservation
 }
 
 /**
- * Attempt record for an unexpected processor failure after work was claimed.
+ * Attempt record for an internal failure after work was claimed or abandoned.
  *
- * Currently, we do not retry these automatically; durable worker phases should add
- * retry policy, claim leases, and dead-letter handling around this outcome.
+ * `unexpected-error` is the current transient bucket for processor
+ * exceptions. `lease-timeout` records the worker ownership path: a worker claimed
+ * the request, stopped heartbeating, and the request exceeded its reclaim budget.
+ * A later durable worker should replace the coarse `unexpected-error` bucket
+ * with explicit retryable and non-retryable classifications.
  */
 export interface FailedReservationRequestProcessingAttempt extends ReservationRequestProcessingAttemptBase {
   readonly outcome: 'failed';
-  readonly reason: 'unexpected-error';
+  readonly reason: 'unexpected-error' | 'lease-timeout';
 }

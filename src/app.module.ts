@@ -5,7 +5,12 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { generatedGraphqlSchemaPath } from './generated-graphql-schema';
 import type { ActorContext } from './application/authentication/actor-context';
 import type { AuthenticatedUser } from './domain/authentication/authenticated-user';
-import { config, type AuthMode } from './config';
+import {
+  config,
+  type AuthMode,
+  type PersistenceMode,
+  type ReservationWorkerMode,
+} from './config';
 import type {
   GraphqlHttpRequest,
   MovieReservationGraphqlContext,
@@ -17,6 +22,8 @@ import { HealthModule } from './presentation/http/health.module';
 
 export interface AppModuleOptions {
   readonly authMode?: AuthMode;
+  readonly persistenceMode?: PersistenceMode;
+  readonly reservationWorkerMode?: ReservationWorkerMode;
   readonly graphqlOperationLogger?: GraphqlOperationLogger;
 }
 
@@ -31,6 +38,9 @@ export interface AppModuleOptions {
 export class AppModule {
   static forRoot(options: AppModuleOptions = {}): DynamicModule {
     const authMode = options.authMode ?? config.AUTH_MODE;
+    const persistenceMode = options.persistenceMode ?? config.PERSISTENCE_MODE;
+    const reservationWorkerMode =
+      options.reservationWorkerMode ?? config.RESERVATION_WORKER_MODE;
 
     const gqlContext = ({
       req,
@@ -58,7 +68,11 @@ export class AppModule {
       imports: [
         GraphQLModule.forRoot<ApolloDriverConfig>(gqlModuleOptions),
         HealthModule,
-        MovieReservationsGraphqlModule.forRoot({ authMode }),
+        MovieReservationsGraphqlModule.forRoot({
+          authMode,
+          persistenceMode,
+          reservationWorkerMode,
+        }),
       ],
     };
   }

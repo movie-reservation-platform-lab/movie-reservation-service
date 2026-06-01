@@ -57,6 +57,17 @@ export class MovieReservationsResolver {
     return movies.map(toMovieGql);
   }
 
+  /**
+   * List scheduled screenings, optionally filtered to one movie
+   *
+   * @param context
+   * @param movieId
+   *
+   * TODO: Move this read-model assembly into an application query/use-case
+   *  method, such as `listScreeningsWithSeats`. Resolvers should not know
+   *  how to join screenings with nested seat data. Tracked in
+   *  docs/plans/service-follow-up-tasks.md.
+   */
   @Reflect.metadata('design:paramtypes', [Object, String])
   @Query(() => [ScreeningGql], {
     description:
@@ -78,16 +89,14 @@ export class MovieReservationsResolver {
       screeningInput,
     );
 
-    // TODO: Review a DataLoader, batch repository method, or read model before
-    //  adding the Postgres adapter. Tracked in docs/plans/service-follow-up-tasks.md.
-    return Promise.all(
-      screenings.map(async (screening) => {
-        const seats = await this.movieReservationsService.listSeatsForScreening(
-          context.actor,
-          screening.id,
-        );
-        return toScreeningGql(screening, seats);
-      }),
+    const seatsByScreeningId =
+      await this.movieReservationsService.listSeatsForScreenings(
+        context.actor,
+        screenings.map((screening) => screening.id),
+      );
+
+    return screenings.map((screening) =>
+      toScreeningGql(screening, seatsByScreeningId.get(screening.id) ?? []),
     );
   }
 

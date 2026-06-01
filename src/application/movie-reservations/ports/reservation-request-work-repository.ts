@@ -4,7 +4,38 @@ import type { ReservationRequestId } from '../../../domain/movie-reservations/re
 import type { ScreeningId } from '../../../domain/movie-reservations/screening-id';
 import type { SeatId } from '../../../domain/movie-reservations/seat-id';
 import type { ClaimedReservationRequest } from '../claimed-reservation-request';
-import type { ReservationRequestProcessingAttempt } from '../reservation-request-processing-attempt';
+import type {
+  ConfirmedReservationRequestProcessingAttempt,
+  FailedReservationRequestProcessingAttempt,
+  RejectedReservationRequestProcessingAttempt,
+  ReservationRequestProcessingAttempt,
+} from '../reservation-request-processing-attempt';
+
+export type ConfirmClaimedReservationRequestResult =
+  | {
+      readonly outcome: 'confirmed';
+      readonly reservationRequest: ReservationRequest;
+    }
+  | {
+      readonly outcome: 'rejected';
+      readonly reservationRequest: ReservationRequest;
+      readonly attempt: RejectedReservationRequestProcessingAttempt;
+    };
+
+export interface ClaimNextPendingReservationRequestInput {
+  readonly workerId: string;
+  readonly claimToken: string;
+  readonly claimedAt: string;
+  readonly claimExpiresAt: string;
+  readonly maxLeaseTimeouts: number;
+  readonly maxTransientFailures: number;
+}
+
+export interface HeartbeatClaimedReservationRequestInput {
+  readonly claimedWorkItem: ClaimedReservationRequest;
+  readonly heartbeatAt: string;
+  readonly claimExpiresAt: string;
+}
 
 /**
  * Worker-facing persistence boundary for reservation request processing.
@@ -19,10 +50,22 @@ export interface ReservationRequestWorkRepository {
    * Claims the oldest pending reservation request and moves it to PROCESSING.
    *
    * Durable implementations should perform the claim as one atomic operation,
-   * for example by selecting the lowest-sequence REQUESTED row under a lock and
-   * returning the updated PROCESSING row.
+   * for example by selecting the lowest-sequence eligible REQUESTED or expired
+   * PROCESSING row under a lock and returning the updated PROCESSING row.
    */
-  claimNextPendingReservationRequest(): Promise<ClaimedReservationRequest | null>;
+  claimNextPendingReservationRequest(
+    input: ClaimNextPendingReservationRequestInput,
+  ): Promise<ClaimedReservationRequest | null>;
+
+  /**
+   * Renews an owned claim while the fake worker is still processing it.
+   *
+   * Returns false when the row is terminal, expired and reclaimed by someone
+   * else, or otherwise no longer owned by the supplied claim token.
+   */
+  heartbeatClaimedReservationRequest(
+    input: HeartbeatClaimedReservationRequestInput,
+  ): Promise<boolean>;
 
   /**
    * Finds an already-confirmed reservation that overlaps the requested seats
@@ -42,7 +85,8 @@ export interface ReservationRequestWorkRepository {
   confirmClaimedReservationRequest(input: {
     readonly claimedWorkItem: ClaimedReservationRequest;
     readonly reservation: Reservation;
-  }): Promise<ReservationRequest>;
+    readonly attempt: ConfirmedReservationRequestProcessingAttempt;
+  }): Promise<ConfirmClaimedReservationRequestResult>;
 
   /**
    * Marks a claimed request REJECTED after a seat conflict.
@@ -50,25 +94,31 @@ export interface ReservationRequestWorkRepository {
   rejectClaimedReservationRequest(input: {
     readonly claimedWorkItem: ClaimedReservationRequest;
     readonly reason: 'seat-conflict';
+    readonly attempt: RejectedReservationRequestProcessingAttempt;
   }): Promise<ReservationRequest>;
 
   /**
-   * Marks a claimed request FAILED after an unexpected processor failure.
+   * Records an unexpected processor failure and releases the request for a
+   * later retry while attempts remain.
+   */
+  releaseClaimedReservationRequestForRetry(input: {
+    readonly claimedWorkItem: ClaimedReservationRequest;
+    readonly reason: 'unexpected-error';
+    readonly attempt: FailedReservationRequestProcessingAttempt;
+  }): Promise<ReservationRequest>;
+
+  /**
+   * Marks a claimed request FAILED after an unexpected processor failure uses
+   * the final configured attempt.
    *
-   * Currently FAILED is treated as terminal. Future durable worker phases should decide
-   * retry, lease-expiry, and dead-letter behavior around this operation.
+   * Future durable worker phases should decide retry classification,
+   * backoff/jitter, and dead-letter behavior around this operation.
    */
   failClaimedReservationRequest(input: {
     readonly claimedWorkItem: ClaimedReservationRequest;
     readonly reason: 'unexpected-error';
+    readonly attempt: FailedReservationRequestProcessingAttempt;
   }): Promise<ReservationRequest>;
-
-  /**
-   * Records internal operational history for application owners.
-   */
-  recordReservationRequestProcessingAttempt(
-    attempt: ReservationRequestProcessingAttempt,
-  ): Promise<void>;
 
   /**
    * Reads internal processing history for tests and future observability.

@@ -31,13 +31,189 @@ Run the service locally with automatic restart:
 npm -w movie-reservation-service run dev
 ```
 
-That command uses `env_files/local-fixed-user.env`. To select a different
-local DI profile, run one of the named scripts:
+That command uses `env_files/local/local-fixed-user.env`. To select a
+different local DI profile, run one of the named scripts:
 
 ```bash
 npm -w movie-reservation-service run dev:local-fixed-user
 npm -w movie-reservation-service run dev:local-jwt
 ```
+
+## WebStorm Run Configurations
+
+Shared WebStorm run configurations live under `.idea/runConfigurations/`.
+They use `$PROJECT_DIR$` paths and intentionally avoid secrets.
+
+- `service_debug_local_in_memory` starts the Nest service on the host through
+  `tsx` with `env_files/local/local-fixed-user.env`. Use this for normal
+  host-based app debugging with the local fixed Aurora actor and in-memory
+  persistence.
+- `service_debug_local_compose_dependencies` starts the Nest service on the
+  host through `tsx` with `env_files/local/local-postgres.env`. Use this when
+  the service process should be debugged locally in WebStorm while dependencies
+  come from Docker Compose. Today that means Postgres on `localhost:5432`;
+  future Compose dependencies should follow the same local host-runner profile
+  pattern.
+- `node_attach_9229` attaches Chrome/Node debugging to port `9229`. Use it when
+  you started a Node process separately with an inspector flag and only want
+  WebStorm to attach.
+
+Before running `service_debug_local_compose_dependencies`, start the local
+Compose dependencies:
+
+```bash
+docker compose up -d postgres
+```
+
+The Postgres e2e debug configurations are documented in
+[Debug Postgres E2E Tests](../docs/workflows/debug-postgres-e2e-tests.md#debug-from-webstorm).
+
+## Local Postgres Development
+
+The default `dev` command still uses in-memory persistence. Use this mode when
+you want the fastest feedback loop and do not need durable state.
+
+Postgres mode is the local durable persistence path. Docker Compose starts only
+the database for now; the NestJS API still runs on the host through npm. That
+keeps debugging simple while still exercising the same Knex repositories and
+migrations that future container and ECS workflows will use.
+
+Start the local database:
+
+```bash
+docker compose up -d postgres
+```
+
+Run schema migrations explicitly:
+
+```bash
+npm -w movie-reservation-service run db:migrate:local-postgres
+```
+
+The `:local-postgres` suffix is intentional. Generic scripts such as
+`db:migrate` and `db:migrate:status` do not load an env file; they expect
+`DATABASE_URL` to be injected by your shell, CI, ECS task, Kubernetes Job, or a
+future migration container. The local-postgres scripts are developer
+conveniences that load `env_files/local/local-postgres.env` before running the
+same migration entrypoint.
+
+Seed the local demo catalog separately from migrations:
+
+```bash
+npm -w movie-reservation-service run db:seed:local-postgres
+```
+
+Run the API against the Dockerized database:
+
+```bash
+npm -w movie-reservation-service run dev:local-postgres
+```
+
+The script loads `env_files/local/local-postgres.env`, which sets
+`PERSISTENCE_MODE=postgres` and points `DATABASE_URL` at the Compose Postgres
+service on `localhost:5432`. The migration and seed scripts use the same env
+file only when you choose their `:local-postgres` variants.
+
+Local service profiles bind the Nest HTTP server to `127.0.0.1` by default.
+Use an explicit env override such as `HOST=0.0.0.0` only when you intentionally
+need to expose the dev server outside the machine.
+
+The local profiles also enable `RESERVATION_WORKER_MODE=fake-in-process`. This
+worker is a lightweight in-process data-plane adapter: it polls the shared
+repository, claims one request at a time, heartbeats the claim, and processes
+the request deterministically. It is intentionally not the long-term separate
+worker/service design. The retry model is documented in
+[the architecture decisions](../docs/architecture/architecture-decisions.md#adr-013-split-reservation-worker-retry-budgets-by-failure-type).
+
+Check migration status:
+
+```bash
+npm -w movie-reservation-service run db:migrate:status:local-postgres
+```
+
+Reset the local database when you want a clean durable state:
+
+```bash
+docker compose down -v
+```
+
+Migrations intentionally do not run during normal API startup. Local development
+uses an explicit migration command so the workflow matches the future
+ECS/Kubernetes model: run a one-off migration task or job first, then start API
+tasks.
+
+When the environment is already injected, use the generic commands instead:
+
+```bash
+npm -w movie-reservation-service run db:migrate
+npm -w movie-reservation-service run db:migrate:status
+```
+
+See [the runbook](../docs/operations/runbook.md#local-docker-compose-checks)
+for the operational checklist and reset notes.
+
+## E2E Tests
+
+The service has focused Postgres e2e tests under `test/e2e`. These tests prove
+the durable adapter path, not every in-memory behavior.
+
+The default e2e command uses Testcontainers:
+
+```bash
+npm -w movie-reservation-service run test:e2e
+```
+
+Testcontainers starts a temporary Postgres container, runs migrations, seeds test
+data, executes the e2e suite, and then removes the container. This is the best
+default for CI-style verification because the database starts clean each run.
+It requires a working local Docker runtime.
+
+To run the same e2e tests against a developer-managed database, start Compose
+Postgres and use external mode:
+
+```bash
+docker compose up -d postgres
+
+TEST_DATABASE_URL=postgres://movie_reservation_service:movie_reservation_service@localhost:5432/movie_reservation_service \
+  npm -w movie-reservation-service run test:e2e:external
+```
+
+External mode is destructive to the target database: the test harness resets the
+`public` schema before running migrations and seeds. Use it only against a
+throwaway local database.
+
+For repeat local debugging, render the dedicated Compose e2e env file:
+
+```bash
+cp movie-reservation-service/env_files/templates/local/test-e2e-postgres.env.template movie-reservation-service/env_files/local/test-e2e-postgres.env
+```
+
+That profile is for host-based npm or WebStorm execution and uses
+`localhost:5432`. If the test runner itself runs inside the Compose network,
+render `env_files/templates/in-docker/test-e2e-postgres.env.template` instead;
+that profile uses the Compose service hostname `postgres`.
+
+Then run a focused e2e test against the Compose database:
+
+```bash
+npm -w movie-reservation-service run test:e2e:local-postgres -- \
+  -t "creates, processes, and reads a confirmed reservation" \
+  --testTimeout 0 \
+  --hookTimeout 0 \
+  --no-file-parallelism
+```
+
+The Postgres e2e harness disables the fake background reservation worker and
+drives the processor manually. That keeps debug runs deterministic and avoids a
+timer-based worker racing the test's explicit processor call.
+
+See
+[Debug Postgres E2E Tests](../docs/workflows/debug-postgres-e2e-tests.md) for
+terminal and WebStorm debugging setup, including why Vitest timeouts need to be
+disabled while stepping through hooks.
+
+See [the runbook](../docs/operations/runbook.md#local-docker-compose-checks)
+for the same commands from an operations perspective.
 
 ## Local Authentication Modes
 
@@ -58,18 +234,46 @@ container/image should also exclude local auth implementations and local env
 profiles so a misconfigured `AUTH_MODE` cannot accidentally run development
 wiring in production.
 
-The committed env profiles are intentionally non-secret:
+The committed env templates are intentionally non-secret. Rendered env files
+live under `env_files/`, are ignored by git, and are the files the npm scripts
+load with `node --env-file`.
 
-- `env_files/local-fixed-user.env` for fast local development.
-- `env_files/local-jwt.env` for local bearer-token claim testing.
-- `env_files/test.env` for test defaults.
-- `env_files/production-oidc.env.example` as a placeholder for future
-  production OIDC wiring.
+The env folders are split by where the Node process runs:
 
-Copyable templates live under `env_files/templates/`. Use those when a
-profile needs local-only values or future secret-backed settings. Rendered local
-files should use names such as `env_files/local-jwt.local.env`; those are
-ignored by git.
+- `env_files/local/` is for host-based npm/WebStorm execution. These profiles
+  use `localhost` for services published from Docker Compose.
+- `env_files/in-docker/` is for a process running inside the Compose network.
+  These profiles use Compose service names such as `postgres`.
+
+Render the standard local and in-docker profiles from the repository root:
+
+```bash
+cp movie-reservation-service/env_files/templates/local/local-fixed-user.env.template movie-reservation-service/env_files/local/local-fixed-user.env
+cp movie-reservation-service/env_files/templates/local/local-jwt.env.template movie-reservation-service/env_files/local/local-jwt.env
+cp movie-reservation-service/env_files/templates/local/local-postgres.env.template movie-reservation-service/env_files/local/local-postgres.env
+cp movie-reservation-service/env_files/templates/local/test-e2e-postgres.env.template movie-reservation-service/env_files/local/test-e2e-postgres.env
+cp movie-reservation-service/env_files/templates/in-docker/local-fixed-user.env.template movie-reservation-service/env_files/in-docker/local-fixed-user.env
+cp movie-reservation-service/env_files/templates/in-docker/local-jwt.env.template movie-reservation-service/env_files/in-docker/local-jwt.env
+cp movie-reservation-service/env_files/templates/in-docker/local-postgres.env.template movie-reservation-service/env_files/in-docker/local-postgres.env
+cp movie-reservation-service/env_files/templates/in-docker/test-e2e-postgres.env.template movie-reservation-service/env_files/in-docker/test-e2e-postgres.env
+```
+
+Use those exact rendered names for the current scripts:
+
+- `env_files/local/local-fixed-user.env` for `dev:local-fixed-user`.
+- `env_files/local/local-jwt.env` for `dev:local-jwt`.
+- `env_files/local/local-postgres.env` for `dev:local-postgres` and the
+  `db:*:local-postgres` scripts.
+- `env_files/local/test-e2e-postgres.env` for focused Postgres e2e debugging
+  against the Compose database.
+- `env_files/in-docker/test-e2e-postgres.env` for a future/containerized e2e test
+  runner on the Compose network.
+
+Production-like settings should come from platform-managed environment
+variables or secret stores. The
+`env_files/templates/platform/production-oidc.env.template` file is only a
+shape reference for future production OIDC wiring, not a committed runtime env
+file.
 
 `ENABLE_GRAPHIQL` controls whether the unauthenticated GraphiQL HTML landing
 page is available at `/graphql`. Local and test profiles set it to `true`;
@@ -175,13 +379,17 @@ npm -w movie-reservation-service run check
 - `oxlint . --deny-warnings` for the fast Rust-based lint pass.
 - `eslint .` for the established TypeScript lint pass.
 - `tsc -p tsconfig.json --noEmit` for TypeScript type safety without writing build output.
-- `vitest run` for behavior tests.
+- `vitest run test/unit` for fast unit behavior tests.
+- `vitest run test/integration` for in-process NestJS and adapter integration tests.
 
 Run the full CI-style command, including the production build:
 
 ```bash
 npm -w movie-reservation-service run ci
 ```
+
+`ci` also runs `test:e2e`, so it requires a working Docker runtime for the
+Testcontainers Postgres database.
 
 ## Formatting And Linting
 

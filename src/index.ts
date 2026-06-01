@@ -13,7 +13,7 @@ async function main(): Promise<void> {
   const app = await createApp();
 
   try {
-    await app.listen(config.PORT, '0.0.0.0');
+    await app.listen(config.PORT, config.HOST);
     console.log(`Server listening at ${await app.getUrl()}`);
   } catch (err) {
     console.error(err);

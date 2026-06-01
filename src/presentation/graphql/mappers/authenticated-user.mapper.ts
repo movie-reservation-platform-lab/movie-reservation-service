@@ -14,6 +14,9 @@ export function toAuthenticatedUserGql(
   gql.username = authenticatedUser.username;
   gql.email = authenticatedUser.email;
   gql.movieProviderId = authenticatedUser.movieProviderId;
+  if (authenticatedUser.movieProviderCode !== undefined) {
+    gql.movieProviderCode = authenticatedUser.movieProviderCode;
+  }
   gql.roles = [...authenticatedUser.roles];
   gql.scopes = [...authenticatedUser.scopes];
   return gql;

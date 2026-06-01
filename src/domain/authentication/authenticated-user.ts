@@ -19,4 +19,5 @@ export interface AuthenticatedUser {
   readonly roles: readonly UserRole[];
   readonly scopes: readonly string[];
   readonly movieProviderId: MovieProviderId;
+  readonly movieProviderCode?: string;
 }

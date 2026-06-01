@@ -10,6 +10,7 @@ import type { ReservationRequestId } from '../../../domain/movie-reservations/re
 import type { Screening } from '../../../domain/movie-reservations/screening';
 import type { ScreeningId } from '../../../domain/movie-reservations/screening-id';
 import type { Seat } from '../../../domain/movie-reservations/seat';
+import type { SeatId } from '../../../domain/movie-reservations/seat-id';
 import { InMemoryMovieReservationStore } from './in-memory-movie-reservation.store';
 
 /**
@@ -56,9 +57,12 @@ export class InMemoryMovieReservationRepository implements MovieReservationRepos
 
   async findScreeningsByProviderId(
     movieProviderId: MovieProviderId,
+    input: { readonly movieId?: MovieId } = {},
   ): Promise<readonly Screening[]> {
     return Array.from(this.store.screeningsById.values()).filter(
-      (screening) => screening.movieProviderId === movieProviderId,
+      (screening) =>
+        screening.movieProviderId === movieProviderId &&
+        (input.movieId === undefined || screening.movieId === input.movieId),
     );
   }
 
@@ -93,6 +97,46 @@ export class InMemoryMovieReservationRepository implements MovieReservationRepos
 
     return Array.from(this.store.seatsById.values()).filter(
       (seat) =>
+        seat.movieProviderId === movieProviderId &&
+        seat.auditoriumId === screening.auditoriumId,
+    );
+  }
+
+  async findSeatsByScreeningIds(
+    movieProviderId: MovieProviderId,
+    screeningIds: readonly ScreeningId[],
+  ): Promise<ReadonlyMap<ScreeningId, readonly Seat[]>> {
+    const screeningSeats = await Promise.all(
+      screeningIds.map(async (screeningId) => ({
+        screeningId,
+        seats: await this.findSeatsByScreeningId(movieProviderId, screeningId),
+      })),
+    );
+
+    return new Map(
+      screeningSeats.map(({ screeningId, seats }) => [screeningId, seats]),
+    );
+  }
+
+  async findSeatsByIdsForScreening(
+    movieProviderId: MovieProviderId,
+    screeningId: ScreeningId,
+    seatIds: readonly SeatId[],
+  ): Promise<readonly Seat[]> {
+    const screening = this.store.screeningsById.get(screeningId);
+
+    if (
+      screening === undefined ||
+      screening.movieProviderId !== movieProviderId
+    ) {
+      return [];
+    }
+
+    const requestedSeatIds = new Set(seatIds);
+
+    return Array.from(this.store.seatsById.values()).filter(
+      (seat) =>
+        requestedSeatIds.has(seat.id) &&
         seat.movieProviderId === movieProviderId &&
         seat.auditoriumId === screening.auditoriumId,
     );

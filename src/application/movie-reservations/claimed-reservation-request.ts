@@ -7,4 +7,10 @@ import type { ReservationRequestSequence } from '../../domain/movie-reservations
 export interface ClaimedReservationRequest {
   readonly reservationRequest: ReservationRequest;
   readonly sequence: ReservationRequestSequence;
+  readonly claimedBy: string;
+  readonly claimToken: string;
+  readonly claimedAt: string;
+  readonly claimExpiresAt: string;
+  readonly leaseTimeoutCount: number;
+  readonly transientFailureCount: number;
 }

@@ -1,4 +1,4 @@
-import { createNonEmptyId } from './id-utils';
+import { createUuidId } from './id-utils';
 
 declare const reservationIdBrand: unique symbol;
 
@@ -13,5 +13,5 @@ export type ReservationId = string & {
 };
 
 export function createReservationId(value: string): ReservationId {
-  return createNonEmptyId<ReservationId>(value, 'ReservationId');
+  return createUuidId<ReservationId>(value, 'ReservationId');
 }

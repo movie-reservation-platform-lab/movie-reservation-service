@@ -1,4 +1,4 @@
-import { createNonEmptyId } from './id-utils';
+import { createUuidId } from './id-utils';
 
 declare const screeningIdBrand: unique symbol;
 
@@ -12,5 +12,5 @@ export type ScreeningId = string & {
 };
 
 export function createScreeningId(value: string): ScreeningId {
-  return createNonEmptyId<ScreeningId>(value, 'ScreeningId');
+  return createUuidId<ScreeningId>(value, 'ScreeningId');
 }

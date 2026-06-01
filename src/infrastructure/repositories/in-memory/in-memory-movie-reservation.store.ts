@@ -31,6 +31,17 @@ export interface InMemoryMovieReservationStoreInput {
   readonly processingAttempts?: readonly ReservationRequestProcessingAttempt[];
 }
 
+export interface InMemoryReservationRequestWorkMetadata {
+  readonly sequence: ReservationRequestSequence;
+  readonly leaseTimeoutCount: number;
+  readonly transientFailureCount: number;
+  readonly claimedBy?: string;
+  readonly claimToken?: string;
+  readonly claimedAt?: string;
+  readonly claimExpiresAt?: string;
+  readonly lastHeartbeatAt?: string;
+}
+
 /**
  * Fake database shared by the read/write repository adapters.
  *
@@ -59,11 +70,11 @@ export class InMemoryMovieReservationStore {
     ReservationRequestId,
     ReservationRequestProcessingAttempt[]
   >();
-
-  private readonly reservationRequestSequencesById = new Map<
+  readonly reservationRequestWorkMetadataById = new Map<
     ReservationRequestId,
-    ReservationRequestSequence
+    InMemoryReservationRequestWorkMetadata
   >();
+
   private nextReservationRequestSequenceValue = 1;
 
   constructor(input: InMemoryMovieReservationStoreInput) {
@@ -112,25 +123,40 @@ export class InMemoryMovieReservationStore {
     }
 
     this.reservationRequestsById.set(reservationRequest.id, reservationRequest);
-    this.reservationRequestSequencesById.set(
-      reservationRequest.id,
-      this.allocateReservationRequestSequence(),
-    );
+    this.reservationRequestWorkMetadataById.set(reservationRequest.id, {
+      sequence: this.allocateReservationRequestSequence(),
+      leaseTimeoutCount: 0,
+      transientFailureCount: 0,
+    });
   }
 
   getReservationRequestSequence(
     reservationRequestId: ReservationRequestId,
   ): ReservationRequestSequence {
-    const sequence =
-      this.reservationRequestSequencesById.get(reservationRequestId);
+    return this.getReservationRequestWorkMetadata(reservationRequestId)
+      .sequence;
+  }
 
-    if (sequence === undefined) {
+  getReservationRequestWorkMetadata(
+    reservationRequestId: ReservationRequestId,
+  ): InMemoryReservationRequestWorkMetadata {
+    const metadata =
+      this.reservationRequestWorkMetadataById.get(reservationRequestId);
+
+    if (metadata === undefined) {
       throw new Error(
-        `Reservation request ${reservationRequestId} does not have a processing sequence`,
+        `Reservation request ${reservationRequestId} does not have work metadata`,
       );
     }
 
-    return sequence;
+    return metadata;
+  }
+
+  updateReservationRequestWorkMetadata(
+    reservationRequestId: ReservationRequestId,
+    metadata: InMemoryReservationRequestWorkMetadata,
+  ): void {
+    this.reservationRequestWorkMetadataById.set(reservationRequestId, metadata);
   }
 
   recordProcessingAttempt(attempt: ReservationRequestProcessingAttempt): void {

@@ -37,7 +37,10 @@ export async function createApp(
   options: AppModuleOptions = {},
 ): Promise<INestApplication> {
   const logger = getNestLogger(config.LOG_LEVEL, config.NODE_ENV);
-  return NestFactory.create(AppModule.forRoot(options), {
+  const app = await NestFactory.create(AppModule.forRoot(options), {
     logger: logger,
   });
+  app.enableShutdownHooks();
+
+  return app;
 }

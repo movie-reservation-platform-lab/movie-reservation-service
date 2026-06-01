@@ -44,7 +44,7 @@ describe('movie reservation GraphQL auth context with local-jwt auth', () => {
           sub: 'user-ada',
           preferred_username: 'ada',
           email: 'ada@aurora.example.test',
-          movie_provider_id: 'provider-aurora',
+          movie_provider_id: '11111111-1111-4111-8111-111111111111',
           realm_access: { roles: ['CUSTOMER'] },
           scope: 'reservations:read',
         })}`,
@@ -68,7 +68,7 @@ describe('movie reservation GraphQL auth context with local-jwt auth', () => {
       userId: 'user-ada',
       username: 'ada',
       email: 'ada@aurora.example.test',
-      movieProviderId: 'provider-aurora',
+      movieProviderId: '11111111-1111-4111-8111-111111111111',
       roles: ['CUSTOMER'],
       scopes: ['reservations:read'],
     });
@@ -127,7 +127,7 @@ describe('movie reservation GraphQL auth context with local-fixed-user auth', ()
       userId: 'local-dev-user',
       username: 'local-dev-admin',
       email: 'local-dev@example.test',
-      movieProviderId: 'provider-aurora',
+      movieProviderId: '11111111-1111-4111-8111-111111111111',
       roles: ['TENANT_ADMIN'],
       scopes: ['reservations:read:tenant'],
     });
@@ -202,7 +202,10 @@ describe('movie reservation GraphQL operation logging', () => {
       'operationType=query',
     );
     expect(capturedLogs.logMessages.join('\n')).toContain(
-      'movieProviderId=provider-aurora',
+      'movieProviderCode=aurora-silver-maple',
+    );
+    expect(capturedLogs.logMessages.join('\n')).not.toContain(
+      'movieProviderId=11111111-1111-4111-8111-111111111111',
     );
     expect(capturedLogs.logMessages.join('\n')).toContain(
       'userId=local-dev-user',
@@ -218,8 +221,8 @@ describe('movie reservation GraphQL operation logging', () => {
         query: `mutation DuplicateReservation {
           requestReservation(
             input: {
-              screeningId: "screening-aurora-1"
-              seatIds: ["seat-aurora-1-a3", "seat-aurora-1-a3"]
+              screeningId: "55555555-5555-4555-8555-555555555551"
+              seatIds: ["66666666-6666-4666-8666-666666666663", "66666666-6666-4666-8666-666666666663"]
             }
           ) {
             id
@@ -245,6 +248,60 @@ describe('movie reservation GraphQL operation logging', () => {
     expect(capturedLogs.errorTraces.join('\n')).toContain(
       'Error: ReservationRequest cannot include duplicate seats',
     );
+  });
+});
+
+describe('movie reservation GraphQL operation logging with local-jwt auth', () => {
+  let app: INestApplication;
+  const capturedLogs = createCapturedGraphqlLogger();
+
+  beforeAll(async () => {
+    app = await createApp({
+      authMode: 'local-jwt',
+      graphqlOperationLogger: capturedLogs.logger,
+    });
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('sanitizes auth-derived metadata before writing operation logs', async () => {
+    capturedLogs.clear();
+
+    const response = await request(app.getHttpServer())
+      .post('/graphql')
+      .set(
+        'authorization',
+        `Bearer ${createUnsignedJwt({
+          sub: 'user-ada\nmovieProviderCode=forged',
+          preferred_username: 'ada',
+          email: 'ada@aurora.example.test',
+          movie_provider_id: '11111111-1111-4111-8111-111111111111',
+          movie_provider_code: 'aurora-silver-maple',
+          realm_access: { roles: ['CUSTOMER'] },
+          scope: 'reservations:read',
+        })}`,
+      )
+      .send({
+        query: `query CurrentUser {
+          me {
+            userId
+          }
+        }`,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.errors).toBeUndefined();
+
+    const startLog = capturedLogs.logMessages.find((message) =>
+      message.includes('event=graphql.operation.start'),
+    );
+
+    expect(startLog).toContain('movieProviderCode=aurora-silver-maple');
+    expect(startLog).toContain('userId=user-ada_movieProviderCode:forged');
+    expect(startLog).not.toContain('userId=user-ada\nmovieProviderCode=forged');
   });
 });
 
@@ -280,13 +337,13 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
     expect(response.body.errors).toBeUndefined();
     expect(response.body.data.movies).toEqual([
       {
-        id: 'movie-aurora-1',
+        id: '44444444-4444-4444-8444-444444444441',
         title: 'The Type-Safe Matinee',
         rating: 'PG',
         durationMinutes: 102,
       },
       {
-        id: 'movie-aurora-2',
+        id: '44444444-4444-4444-8444-444444444442',
         title: 'Fargate at Midnight',
         rating: 'PG-13',
         durationMinutes: 118,
@@ -299,7 +356,7 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
       .post('/graphql')
       .send({
         query: `{
-          screenings(movieId: "movie-aurora-1") {
+          screenings(movieId: "44444444-4444-4444-8444-444444444441") {
             id
             movieId
             auditoriumId
@@ -318,15 +375,15 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
     expect(response.body.errors).toBeUndefined();
     expect(response.body.data.screenings).toEqual([
       {
-        id: 'screening-aurora-1',
-        movieId: 'movie-aurora-1',
-        auditoriumId: 'auditorium-aurora-main',
+        id: '55555555-5555-4555-8555-555555555551',
+        movieId: '44444444-4444-4444-8444-444444444441',
+        auditoriumId: '33333333-3333-4333-8333-333333333331',
         startsAt: '2026-06-01T09:00:00.000Z',
         endsAt: '2026-06-01T10:42:00.000Z',
         seats: [
-          { id: 'seat-aurora-1-a1', row: 'A', number: 1 },
-          { id: 'seat-aurora-1-a2', row: 'A', number: 2 },
-          { id: 'seat-aurora-1-a3', row: 'A', number: 3 },
+          { id: '66666666-6666-4666-8666-666666666661', row: 'A', number: 1 },
+          { id: '66666666-6666-4666-8666-666666666662', row: 'A', number: 2 },
+          { id: '66666666-6666-4666-8666-666666666663', row: 'A', number: 3 },
         ],
       },
     ]);
@@ -347,8 +404,8 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
         }`,
         variables: {
           input: {
-            screeningId: 'screening-aurora-1',
-            seatIds: ['seat-aurora-1-a3'],
+            screeningId: '55555555-5555-4555-8555-555555555551',
+            seatIds: ['66666666-6666-4666-8666-666666666663'],
           },
         },
       });
@@ -356,8 +413,8 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
     expect(createResponse.status).toBe(200);
     expect(createResponse.body.errors).toBeUndefined();
     expect(createResponse.body.data.requestReservation).toMatchObject({
-      screeningId: 'screening-aurora-1',
-      seatIds: ['seat-aurora-1-a3'],
+      screeningId: '55555555-5555-4555-8555-555555555551',
+      seatIds: ['66666666-6666-4666-8666-666666666663'],
       requestedByUserId: 'local-dev-user',
       status: 'REQUESTED',
     });
@@ -389,8 +446,8 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
     expect(pollResponse.body.errors).toBeUndefined();
     expect(pollResponse.body.data.reservationRequestStatus).toEqual({
       id: reservationRequestId,
-      screeningId: 'screening-aurora-1',
-      seatIds: ['seat-aurora-1-a3'],
+      screeningId: '55555555-5555-4555-8555-555555555551',
+      seatIds: ['66666666-6666-4666-8666-666666666663'],
       requestedByUserId: 'local-dev-user',
       status: 'REQUESTED',
     });
@@ -431,8 +488,8 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
     expect(confirmedPollResponse.body.errors).toBeUndefined();
     expect(confirmedPollResponse.body.data.reservationRequestStatus).toEqual({
       id: reservationRequestId,
-      screeningId: 'screening-aurora-1',
-      seatIds: ['seat-aurora-1-a3'],
+      screeningId: '55555555-5555-4555-8555-555555555551',
+      seatIds: ['66666666-6666-4666-8666-666666666663'],
       requestedByUserId: 'local-dev-user',
       status: 'CONFIRMED',
     });
@@ -464,8 +521,8 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
     expect(reservationResult.id).toEqual(expect.any(String));
     expect(reservationResult).toMatchObject({
       reservationRequestId,
-      screeningId: 'screening-aurora-1',
-      seatIds: ['seat-aurora-1-a3'],
+      screeningId: '55555555-5555-4555-8555-555555555551',
+      seatIds: ['66666666-6666-4666-8666-666666666663'],
       reservedByUserId: 'local-dev-user',
     });
     expect(reservationResult.confirmedAt).toEqual(expect.any(String));
@@ -482,8 +539,11 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
         }`,
         variables: {
           input: {
-            screeningId: 'screening-aurora-1',
-            seatIds: ['seat-aurora-1-a3', 'seat-aurora-1-a3'],
+            screeningId: '55555555-5555-4555-8555-555555555551',
+            seatIds: [
+              '66666666-6666-4666-8666-666666666663',
+              '66666666-6666-4666-8666-666666666663',
+            ],
           },
         },
       });
@@ -504,7 +564,7 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
       .post('/graphql')
       .send({
         query: `{
-          reservationResult(requestId: "request-aurora-ada") {
+          reservationResult(requestId: "77777777-7777-4777-8777-777777777771") {
             id
             reservationRequestId
             screeningId
@@ -518,12 +578,63 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
     expect(response.status).toBe(200);
     expect(response.body.errors).toBeUndefined();
     expect(response.body.data.reservationResult).toEqual({
-      id: 'reservation-aurora-ada',
-      reservationRequestId: 'request-aurora-ada',
-      screeningId: 'screening-aurora-1',
-      seatIds: ['seat-aurora-1-a1', 'seat-aurora-1-a2'],
+      id: '88888888-8888-4888-8888-888888888881',
+      reservationRequestId: '77777777-7777-4777-8777-777777777771',
+      screeningId: '55555555-5555-4555-8555-555555555551',
+      seatIds: [
+        '66666666-6666-4666-8666-666666666661',
+        '66666666-6666-4666-8666-666666666662',
+      ],
       reservedByUserId: 'user-ada',
       confirmedAt: '2026-06-01T09:05:00.000Z',
+    });
+  });
+});
+
+describe('movie reservation fake worker with local-fixed-user auth', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    app = await createApp({
+      authMode: 'local-fixed-user',
+      reservationWorkerMode: 'fake-in-process',
+    });
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('processes an async reservation request without a direct test processor call', async () => {
+    const createResponse = await request(app.getHttpServer())
+      .post('/graphql')
+      .send({
+        query: `mutation RequestReservation($input: RequestReservationInput!) {
+          requestReservation(input: $input) {
+            id
+            status
+          }
+        }`,
+        variables: {
+          input: {
+            screeningId: '55555555-5555-4555-8555-555555555551',
+            seatIds: ['66666666-6666-4666-8666-666666666663'],
+          },
+        },
+      });
+
+    expect(createResponse.status).toBe(200);
+    expect(createResponse.body.errors).toBeUndefined();
+    const reservationRequestId = readCreatedReservationRequestId(
+      createResponse.body as unknown,
+    );
+
+    await expect(
+      waitForReservationRequestStatus(app, reservationRequestId, 'CONFIRMED'),
+    ).resolves.toMatchObject({
+      id: reservationRequestId,
+      status: 'CONFIRMED',
     });
   });
 });
@@ -591,6 +702,74 @@ function readReservationResult(body: unknown): Record<string, unknown> {
     dataRecord.reservationResult,
     'reservationResult payload',
   );
+}
+
+async function waitForReservationRequestStatus(
+  app: INestApplication,
+  reservationRequestId: string,
+  expectedStatus: string,
+): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + 2_000;
+  return pollReservationRequestStatus(
+    app,
+    reservationRequestId,
+    expectedStatus,
+    deadline,
+  );
+}
+
+async function pollReservationRequestStatus(
+  app: INestApplication,
+  reservationRequestId: string,
+  expectedStatus: string,
+  deadline: number,
+): Promise<Record<string, unknown>> {
+  const response = await request(app.getHttpServer())
+    .post('/graphql')
+    .send({
+      query: `query ReservationRequestStatus($id: ID!) {
+          reservationRequestStatus(id: $id) {
+            id
+            status
+          }
+        }`,
+      variables: {
+        id: reservationRequestId,
+      },
+    });
+
+  expect(response.status).toBe(200);
+  expect(response.body.errors).toBeUndefined();
+
+  const status = requireRecord(
+    requireRecord(response.body.data, 'GraphQL response data')
+      .reservationRequestStatus,
+    'reservationRequestStatus payload',
+  );
+
+  if (status.status === expectedStatus) {
+    return status;
+  }
+
+  if (Date.now() < deadline) {
+    await delay(50);
+    return pollReservationRequestStatus(
+      app,
+      reservationRequestId,
+      expectedStatus,
+      deadline,
+    );
+  }
+
+  throw new Error(
+    `Reservation request ${reservationRequestId} did not reach ${expectedStatus}`,
+  );
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 }
 
 function requireRecord(value: unknown, name: string): Record<string, unknown> {

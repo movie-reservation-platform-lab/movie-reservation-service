@@ -40,6 +40,13 @@ export class AuthenticatedUserGql {
   })
   movieProviderId!: string;
 
+  @Field(() => String, {
+    nullable: true,
+    description:
+      'Optional human-readable movie provider code from authentication claims.',
+  })
+  movieProviderCode?: string;
+
   @Field(() => [UserRole], {
     description: 'Application roles assigned to the authenticated user.',
   })

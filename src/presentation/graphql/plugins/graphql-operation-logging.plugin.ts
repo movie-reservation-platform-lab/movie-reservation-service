@@ -12,7 +12,7 @@ export interface GraphqlOperationLogger {
 interface GraphqlOperationLogMetadata {
   readonly operationName: string;
   readonly operationType: OperationTypeNode | 'unknown';
-  readonly movieProviderId: string;
+  readonly movieProviderCode: string;
   readonly userId: string;
 }
 
@@ -214,7 +214,7 @@ function createInitialMetadata(
   return {
     operationName: anonymousOperationName,
     operationType: 'unknown',
-    movieProviderId: context.actor.movieProviderId,
+    movieProviderCode: context.authenticatedUser.movieProviderCode ?? 'unknown',
     userId: context.actor.userId,
   };
 }
@@ -233,10 +233,10 @@ function formatOperationLog(
 ): string {
   const parts = [
     `event=${eventName}`,
-    `operationName=${metadata.operationName}`,
-    `operationType=${metadata.operationType}`,
-    `movieProviderId=${metadata.movieProviderId}`,
-    `userId=${metadata.userId}`,
+    `operationName=${sanitizeLogToken(metadata.operationName)}`,
+    `operationType=${sanitizeLogToken(metadata.operationType)}`,
+    `movieProviderCode=${sanitizeLogToken(metadata.movieProviderCode)}`,
+    `userId=${sanitizeLogToken(metadata.userId)}`,
   ];
 
   if (outcome !== undefined) {
@@ -326,4 +326,8 @@ function getGraphqlErrorType(error: GraphQLError): string {
  */
 function sanitizeLogValue(value: string): string {
   return value.replaceAll('"', "'").replaceAll('\n', ' ');
+}
+
+function sanitizeLogToken(value: string): string {
+  return sanitizeLogValue(value).replaceAll(/\s/g, '_').replaceAll('=', ':');
 }

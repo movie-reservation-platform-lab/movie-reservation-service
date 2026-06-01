@@ -1,4 +1,4 @@
-import { createNonEmptyId } from './id-utils';
+import { createUuidId } from './id-utils';
 
 declare const movieIdBrand: unique symbol;
 
@@ -13,5 +13,5 @@ export type MovieId = string & {
 };
 
 export function createMovieId(value: string): MovieId {
-  return createNonEmptyId<MovieId>(value, 'MovieId');
+  return createUuidId<MovieId>(value, 'MovieId');
 }
