@@ -1,5 +1,51 @@
 import { z } from 'zod';
 
+const reservationWorkerModeSchema = z.enum(['disabled', 'fake-in-process']);
+const compositionProfileSchema = z.enum([
+  'local-fixed-user',
+  'local-jwt',
+  'local-postgres',
+  'production-oidc',
+]);
+
+export type AuthMode = 'local-fixed-user' | 'local-jwt' | 'oidc';
+export type PersistenceMode = 'in-memory' | 'postgres';
+export type ReservationWorkerMode = z.infer<typeof reservationWorkerModeSchema>;
+export type CompositionProfile = z.infer<typeof compositionProfileSchema>;
+
+export interface CompositionProfileDependencyModes {
+  readonly authMode: AuthMode;
+  readonly persistenceMode: PersistenceMode;
+}
+
+const compositionProfileDependencyModes = {
+  'local-fixed-user': {
+    authMode: 'local-fixed-user',
+    persistenceMode: 'in-memory',
+  },
+  'local-jwt': {
+    authMode: 'local-jwt',
+    persistenceMode: 'in-memory',
+  },
+  'local-postgres': {
+    authMode: 'local-fixed-user',
+    persistenceMode: 'postgres',
+  },
+  'production-oidc': {
+    authMode: 'oidc',
+    persistenceMode: 'postgres',
+  },
+} as const satisfies Record<
+  CompositionProfile,
+  CompositionProfileDependencyModes
+>;
+
+export function getCompositionProfileDependencyModes(
+  profile: CompositionProfile,
+): CompositionProfileDependencyModes {
+  return compositionProfileDependencyModes[profile];
+}
+
 /**
  * Configuration schema using Zod
  *
@@ -11,16 +57,11 @@ const configSchema = z
     PORT: z.coerce.number().default(3000),
     HOST: z.string().min(1).default('127.0.0.1'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
-    AUTH_MODE: z
-      .enum(['local-fixed-user', 'local-jwt', 'oidc'])
-      .default('local-fixed-user'),
-    PERSISTENCE_MODE: z.enum(['in-memory', 'postgres']).default('in-memory'),
+    COMPOSITION_PROFILE: compositionProfileSchema.default('local-fixed-user'),
     DATABASE_URL: z.string().url().optional(),
     DATABASE_POOL_MIN: z.coerce.number().int().min(0).default(0),
     DATABASE_POOL_MAX: z.coerce.number().int().min(1).default(5),
-    RESERVATION_WORKER_MODE: z
-      .enum(['disabled', 'fake-in-process'])
-      .default('disabled'),
+    RESERVATION_WORKER_MODE: reservationWorkerModeSchema.default('disabled'),
     RESERVATION_WORKER_POLL_INTERVAL_MS: z.coerce
       .number()
       .int()
@@ -49,6 +90,35 @@ const configSchema = z
       .enum(['true', 'false'])
       .transform((value) => value === 'true')
       .optional(),
+  })
+  .transform((value) => {
+    const profileModes = getCompositionProfileDependencyModes(
+      value.COMPOSITION_PROFILE,
+    );
+
+    return {
+      PORT: value.PORT,
+      HOST: value.HOST,
+      LOG_LEVEL: value.LOG_LEVEL,
+      COMPOSITION_PROFILE: value.COMPOSITION_PROFILE,
+      AUTH_MODE: profileModes.authMode,
+      PERSISTENCE_MODE: profileModes.persistenceMode,
+      DATABASE_URL: value.DATABASE_URL,
+      DATABASE_POOL_MIN: value.DATABASE_POOL_MIN,
+      DATABASE_POOL_MAX: value.DATABASE_POOL_MAX,
+      RESERVATION_WORKER_MODE: value.RESERVATION_WORKER_MODE,
+      RESERVATION_WORKER_POLL_INTERVAL_MS:
+        value.RESERVATION_WORKER_POLL_INTERVAL_MS,
+      RESERVATION_WORKER_LEASE_MS: value.RESERVATION_WORKER_LEASE_MS,
+      RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS:
+        value.RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS,
+      RESERVATION_WORKER_MAX_LEASE_TIMEOUTS:
+        value.RESERVATION_WORKER_MAX_LEASE_TIMEOUTS,
+      RESERVATION_WORKER_MAX_TRANSIENT_FAILURES:
+        value.RESERVATION_WORKER_MAX_TRANSIENT_FAILURES,
+      NODE_ENV: value.NODE_ENV,
+      ENABLE_GRAPHIQL: value.ENABLE_GRAPHIQL,
+    };
   })
   .superRefine((value, context) => {
     if (
@@ -82,7 +152,8 @@ const configSchema = z
       context.addIssue({
         code: 'custom',
         path: ['DATABASE_URL'],
-        message: 'DATABASE_URL is required when PERSISTENCE_MODE=postgres',
+        message:
+          'DATABASE_URL is required when COMPOSITION_PROFILE selects Postgres persistence',
       });
     }
 
@@ -127,10 +198,6 @@ export function parseConfig(env: NodeJS.ProcessEnv): Config {
 export type Config = z.infer<typeof configSchema>;
 
 export const config = parseConfig(process.env);
-
-export type AuthMode = Config['AUTH_MODE'];
-export type PersistenceMode = Config['PERSISTENCE_MODE'];
-export type ReservationWorkerMode = Config['RESERVATION_WORKER_MODE'];
 
 /**
  * Export the config type for use elsewhere

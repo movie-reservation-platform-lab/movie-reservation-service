@@ -110,9 +110,9 @@ npm -w movie-reservation-service run dev:local-postgres
 ```
 
 The script loads `env_files/local/local-postgres.env`, which sets
-`PERSISTENCE_MODE=postgres` and points `DATABASE_URL` at the Compose Postgres
-service on `localhost:5432`. The migration and seed scripts use the same env
-file only when you choose their `:local-postgres` variants.
+`COMPOSITION_PROFILE=local-postgres` and points `DATABASE_URL` at the Compose
+Postgres service on `localhost:5432`. The migration and seed scripts use the
+same env file only when you choose their `:local-postgres` variants.
 
 Local service profiles bind the Nest HTTP server to `127.0.0.1` by default.
 Use an explicit env override such as `HOST=0.0.0.0` only when you intentionally
@@ -217,7 +217,23 @@ for the same commands from an operations perspective.
 
 ## Local Authentication Modes
 
-`AUTH_MODE` selects the auth wiring used by the Nest composition module:
+`COMPOSITION_PROFILE` is the high-level DI profile. It is the preferred way to
+select a supported auth + persistence wiring set:
+
+- `local-fixed-user` uses fixed local auth with in-memory persistence.
+- `local-jwt` uses unsigned local JWT claim decoding with in-memory persistence.
+- `local-postgres` uses fixed local auth with Postgres persistence.
+- `production-oidc` is the future production shape: OIDC auth with Postgres
+  persistence.
+
+The templates intentionally do not set `AUTH_MODE` or `PERSISTENCE_MODE`.
+`src/config.ts` derives those lower-level modes from `COMPOSITION_PROFILE`.
+Re-render local env files from the templates after this refactor so the files
+match the documented model. `RESERVATION_WORKER_MODE` stays separate because it
+controls the local fake worker runtime, not the auth or repository adapter
+selection.
+
+`AUTH_MODE` is the lower-level auth mode derived from `COMPOSITION_PROFILE`:
 
 - `local-fixed-user` is the default for development. It accepts GraphQL
   requests with no token or any bearer token and authenticates as the fixed
