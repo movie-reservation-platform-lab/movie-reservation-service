@@ -30,16 +30,12 @@ describe('MovieReservationsCompositionModule', () => {
 
     const authenticationService = moduleRef.get(AuthenticationService);
     const reservationsService = moduleRef.get(MovieReservationsService);
-    const repository = moduleRef.get<MovieReservationRepository>(
-      MOVIE_RESERVATION_REPOSITORY,
-    );
+    const repository = moduleRef.get<MovieReservationRepository>(MOVIE_RESERVATION_REPOSITORY);
 
     expect(authenticationService).toBeInstanceOf(AuthenticationService);
     expect(reservationsService).toBeInstanceOf(MovieReservationsService);
     await expect(
-      repository.findMoviesByProviderId(
-        createMovieProviderId('11111111-1111-4111-8111-111111111111'),
-      ),
+      repository.findMoviesByProviderId(createMovieProviderId('11111111-1111-4111-8111-111111111111')),
     ).resolves.toHaveLength(2);
   });
 
@@ -52,27 +48,20 @@ describe('MovieReservationsCompositionModule', () => {
       ],
     }).compile();
     const reservationsService = moduleRef.get(MovieReservationsService);
-    const processor = moduleRef.get<ReservationRequestProcessor>(
-      RESERVATION_REQUEST_PROCESSOR,
-    );
+    const processor = moduleRef.get<ReservationRequestProcessor>(RESERVATION_REQUEST_PROCESSOR);
     const actor = createActorContext({
       userId: createUserId('local-dev-user'),
       username: 'local-dev-admin',
       email: 'local-dev@example.test',
-      movieProviderId: createMovieProviderId(
-        '11111111-1111-4111-8111-111111111111',
-      ),
+      movieProviderId: createMovieProviderId('11111111-1111-4111-8111-111111111111'),
       roles: [UserRole.TENANT_ADMIN],
       scopes: ['reservations:read:tenant'],
     });
 
-    const reservationRequest = await reservationsService.requestReservation(
-      actor,
-      {
-        screeningId: createScreeningId('55555555-5555-4555-8555-555555555551'),
-        seatIds: [createSeatId('66666666-6666-4666-8666-666666666663')],
-      },
-    );
+    const reservationRequest = await reservationsService.requestReservation(actor, {
+      screeningId: createScreeningId('55555555-5555-4555-8555-555555555551'),
+      seatIds: [createSeatId('66666666-6666-4666-8666-666666666663')],
+    });
 
     expect(reservationRequest.status).toBe(ReservationRequestStatus.REQUESTED);
 
@@ -83,9 +72,7 @@ describe('MovieReservationsCompositionModule', () => {
         status: ReservationRequestStatus.CONFIRMED,
       },
     });
-    await expect(
-      reservationsService.getReservationRequest(actor, reservationRequest.id),
-    ).resolves.toMatchObject({
+    await expect(reservationsService.getReservationRequest(actor, reservationRequest.id)).resolves.toMatchObject({
       id: reservationRequest.id,
       status: ReservationRequestStatus.CONFIRMED,
     });
@@ -102,9 +89,7 @@ describe('MovieReservationsCompositionModule', () => {
 
     const authenticationService = moduleRef.get(AuthenticationService);
 
-    await expect(
-      authenticationService.authenticateJwtToken(undefined),
-    ).resolves.toMatchObject({
+    await expect(authenticationService.authenticateJwtToken(undefined)).resolves.toMatchObject({
       userId: 'local-dev-user',
       username: 'local-dev-admin',
       movieProviderId: '11111111-1111-4111-8111-111111111111',
@@ -154,11 +139,7 @@ describe('MovieReservationsCompositionModule', () => {
 
 function createUnsignedJwt(payload: Record<string, unknown>): string {
   const header = { alg: 'none', typ: 'JWT' };
-  return [
-    encodeBase64UrlJson(header),
-    encodeBase64UrlJson(payload),
-    'local-signature',
-  ].join('.');
+  return [encodeBase64UrlJson(header), encodeBase64UrlJson(payload), 'local-signature'].join('.');
 }
 
 function encodeBase64UrlJson(value: Record<string, unknown>): string {

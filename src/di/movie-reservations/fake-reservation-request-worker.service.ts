@@ -1,11 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-  Inject,
-  Injectable,
-  type OnApplicationBootstrap,
-  type OnApplicationShutdown,
-} from '@nestjs/common';
+import { Inject, Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
 
 import type { ClaimedReservationRequest } from '../../application/movie-reservations/claimed-reservation-request';
 import type { Clock } from '../../application/movie-reservations/ports/clock';
@@ -39,9 +34,7 @@ export interface FakeReservationRequestWorkerOptions {
  * package, process, or service without changing the GraphQL API use cases.
  */
 @Injectable()
-export class FakeReservationRequestWorkerService
-  implements OnApplicationBootstrap, OnApplicationShutdown
-{
+export class FakeReservationRequestWorkerService implements OnApplicationBootstrap, OnApplicationShutdown {
   private pollTimer: NodeJS.Timeout | undefined;
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private stopping = false;
@@ -130,16 +123,13 @@ export class FakeReservationRequestWorkerService
   /**
    * Renews the active claim lease, stopping heartbeats if ownership was lost.
    */
-  private async heartbeat(
-    claimedWorkItem: ClaimedReservationRequest,
-  ): Promise<void> {
+  private async heartbeat(claimedWorkItem: ClaimedReservationRequest): Promise<void> {
     const heartbeatAt = this.clock.nowIsoString();
-    const renewed =
-      await this.workRepository.heartbeatClaimedReservationRequest({
-        claimedWorkItem,
-        heartbeatAt,
-        claimExpiresAt: addMilliseconds(heartbeatAt, this.options.claimLeaseMs),
-      });
+    const renewed = await this.workRepository.heartbeatClaimedReservationRequest({
+      claimedWorkItem,
+      heartbeatAt,
+      claimExpiresAt: addMilliseconds(heartbeatAt, this.options.claimLeaseMs),
+    });
 
     if (!renewed) {
       this.clearHeartbeatTimer();

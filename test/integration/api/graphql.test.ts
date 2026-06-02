@@ -26,9 +26,7 @@ describe('movie reservation GraphQL auth context with local-jwt auth', () => {
   });
 
   it('serves GraphiQL without requiring a bearer token for the initial HTML page', async () => {
-    const response = await request(app.getHttpServer())
-      .get('/graphql')
-      .set('accept', 'text/html');
+    const response = await request(app.getHttpServer()).get('/graphql').set('accept', 'text/html');
 
     expect(response.status).toBe(200);
     expect(response.text).toContain('<title>GraphiQL</title>');
@@ -195,21 +193,11 @@ describe('movie reservation GraphQL operation logging', () => {
         expect.stringContaining('event=graphql.operation.finish'),
       ]),
     );
-    expect(capturedLogs.logMessages.join('\n')).toContain(
-      'operationName=CurrentUser',
-    );
-    expect(capturedLogs.logMessages.join('\n')).toContain(
-      'operationType=query',
-    );
-    expect(capturedLogs.logMessages.join('\n')).toContain(
-      'movieProviderCode=aurora-silver-maple',
-    );
-    expect(capturedLogs.logMessages.join('\n')).not.toContain(
-      'movieProviderId=11111111-1111-4111-8111-111111111111',
-    );
-    expect(capturedLogs.logMessages.join('\n')).toContain(
-      'userId=local-dev-user',
-    );
+    expect(capturedLogs.logMessages.join('\n')).toContain('operationName=CurrentUser');
+    expect(capturedLogs.logMessages.join('\n')).toContain('operationType=query');
+    expect(capturedLogs.logMessages.join('\n')).toContain('movieProviderCode=aurora-silver-maple');
+    expect(capturedLogs.logMessages.join('\n')).not.toContain('movieProviderId=11111111-1111-4111-8111-111111111111');
+    expect(capturedLogs.logMessages.join('\n')).toContain('userId=local-dev-user');
   });
 
   it('logs operation failure with GraphQL error details', async () => {
@@ -232,22 +220,12 @@ describe('movie reservation GraphQL operation logging', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data).toBeNull();
-    expect(capturedLogs.errorMessages.join('\n')).toContain(
-      'event=graphql.operation.failure',
-    );
-    expect(capturedLogs.errorMessages.join('\n')).toContain(
-      'operationName=DuplicateReservation',
-    );
+    expect(capturedLogs.errorMessages.join('\n')).toContain('event=graphql.operation.failure');
+    expect(capturedLogs.errorMessages.join('\n')).toContain('operationName=DuplicateReservation');
     expect(capturedLogs.errorMessages.join('\n')).toContain('errorCount=1');
-    expect(capturedLogs.errorMessages.join('\n')).toContain(
-      'errorTypes="Error"',
-    );
-    expect(capturedLogs.errorMessages.join('\n')).toContain(
-      'ReservationRequest cannot include duplicate seats',
-    );
-    expect(capturedLogs.errorTraces.join('\n')).toContain(
-      'Error: ReservationRequest cannot include duplicate seats',
-    );
+    expect(capturedLogs.errorMessages.join('\n')).toContain('errorTypes="Error"');
+    expect(capturedLogs.errorMessages.join('\n')).toContain('ReservationRequest cannot include duplicate seats');
+    expect(capturedLogs.errorTraces.join('\n')).toContain('Error: ReservationRequest cannot include duplicate seats');
   });
 });
 
@@ -295,9 +273,7 @@ describe('movie reservation GraphQL operation logging with local-jwt auth', () =
     expect(response.status).toBe(200);
     expect(response.body.errors).toBeUndefined();
 
-    const startLog = capturedLogs.logMessages.find((message) =>
-      message.includes('event=graphql.operation.start'),
-    );
+    const startLog = capturedLogs.logMessages.find((message) => message.includes('event=graphql.operation.start'));
 
     expect(startLog).toContain('movieProviderCode=aurora-silver-maple');
     expect(startLog).toContain('userId=user-ada_movieProviderCode:forged');
@@ -419,9 +395,7 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
       status: 'REQUESTED',
     });
 
-    const reservationRequestId = readCreatedReservationRequestId(
-      createResponse.body as unknown,
-    );
+    const reservationRequestId = readCreatedReservationRequestId(createResponse.body as unknown);
 
     expect(reservationRequestId).toEqual(expect.any(String));
 
@@ -455,9 +429,7 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
     // TODO: Replace this direct processor call once a real worker or processor
     //  trigger exists. D5 calls the processor through DI so the GraphQL polling
     //  flow stays deterministic without adding timers or queues.
-    const processor = app.get<ReservationRequestProcessor>(
-      RESERVATION_REQUEST_PROCESSOR,
-    );
+    const processor = app.get<ReservationRequestProcessor>(RESERVATION_REQUEST_PROCESSOR);
 
     await expect(processor.processNextPendingRequest()).resolves.toMatchObject({
       outcome: 'confirmed',
@@ -514,9 +486,7 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
 
     expect(reservationResultResponse.status).toBe(200);
     expect(reservationResultResponse.body.errors).toBeUndefined();
-    const reservationResult = readReservationResult(
-      reservationResultResponse.body as unknown,
-    );
+    const reservationResult = readReservationResult(reservationResultResponse.body as unknown);
 
     expect(reservationResult.id).toEqual(expect.any(String));
     expect(reservationResult).toMatchObject({
@@ -540,10 +510,7 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
         variables: {
           input: {
             screeningId: '55555555-5555-4555-8555-555555555551',
-            seatIds: [
-              '66666666-6666-4666-8666-666666666663',
-              '66666666-6666-4666-8666-666666666663',
-            ],
+            seatIds: ['66666666-6666-4666-8666-666666666663', '66666666-6666-4666-8666-666666666663'],
           },
         },
       });
@@ -581,10 +548,7 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
       id: '88888888-8888-4888-8888-888888888881',
       reservationRequestId: '77777777-7777-4777-8777-777777777771',
       screeningId: '55555555-5555-4555-8555-555555555551',
-      seatIds: [
-        '66666666-6666-4666-8666-666666666661',
-        '66666666-6666-4666-8666-666666666662',
-      ],
+      seatIds: ['66666666-6666-4666-8666-666666666661', '66666666-6666-4666-8666-666666666662'],
       reservedByUserId: 'user-ada',
       confirmedAt: '2026-06-01T09:05:00.000Z',
     });
@@ -626,13 +590,9 @@ describe('movie reservation fake worker with local-fixed-user auth', () => {
 
     expect(createResponse.status).toBe(200);
     expect(createResponse.body.errors).toBeUndefined();
-    const reservationRequestId = readCreatedReservationRequestId(
-      createResponse.body as unknown,
-    );
+    const reservationRequestId = readCreatedReservationRequestId(createResponse.body as unknown);
 
-    await expect(
-      waitForReservationRequestStatus(app, reservationRequestId, 'CONFIRMED'),
-    ).resolves.toMatchObject({
+    await expect(waitForReservationRequestStatus(app, reservationRequestId, 'CONFIRMED')).resolves.toMatchObject({
       id: reservationRequestId,
       status: 'CONFIRMED',
     });
@@ -641,11 +601,7 @@ describe('movie reservation fake worker with local-fixed-user auth', () => {
 
 function createUnsignedJwt(payload: Record<string, unknown>): string {
   const header = { alg: 'none', typ: 'JWT' };
-  return [
-    encodeBase64UrlJson(header),
-    encodeBase64UrlJson(payload),
-    'local-signature',
-  ].join('.');
+  return [encodeBase64UrlJson(header), encodeBase64UrlJson(payload), 'local-signature'].join('.');
 }
 
 function createCapturedGraphqlLogger(): CapturedGraphqlLogMessages & {
@@ -682,10 +638,7 @@ function createCapturedGraphqlLogger(): CapturedGraphqlLogMessages & {
 function readCreatedReservationRequestId(body: unknown): string {
   const bodyRecord = requireRecord(body, 'GraphQL response body');
   const dataRecord = requireRecord(bodyRecord.data, 'GraphQL response data');
-  const requestRecord = requireRecord(
-    dataRecord.requestReservation,
-    'requestReservation payload',
-  );
+  const requestRecord = requireRecord(dataRecord.requestReservation, 'requestReservation payload');
 
   if (typeof requestRecord.id !== 'string') {
     throw new Error('requestReservation payload did not include a string id');
@@ -698,10 +651,7 @@ function readReservationResult(body: unknown): Record<string, unknown> {
   const bodyRecord = requireRecord(body, 'GraphQL response body');
   const dataRecord = requireRecord(bodyRecord.data, 'GraphQL response data');
 
-  return requireRecord(
-    dataRecord.reservationResult,
-    'reservationResult payload',
-  );
+  return requireRecord(dataRecord.reservationResult, 'reservationResult payload');
 }
 
 async function waitForReservationRequestStatus(
@@ -710,12 +660,7 @@ async function waitForReservationRequestStatus(
   expectedStatus: string,
 ): Promise<Record<string, unknown>> {
   const deadline = Date.now() + 2_000;
-  return pollReservationRequestStatus(
-    app,
-    reservationRequestId,
-    expectedStatus,
-    deadline,
-  );
+  return pollReservationRequestStatus(app, reservationRequestId, expectedStatus, deadline);
 }
 
 async function pollReservationRequestStatus(
@@ -742,8 +687,7 @@ async function pollReservationRequestStatus(
   expect(response.body.errors).toBeUndefined();
 
   const status = requireRecord(
-    requireRecord(response.body.data, 'GraphQL response data')
-      .reservationRequestStatus,
+    requireRecord(response.body.data, 'GraphQL response data').reservationRequestStatus,
     'reservationRequestStatus payload',
   );
 
@@ -753,17 +697,10 @@ async function pollReservationRequestStatus(
 
   if (Date.now() < deadline) {
     await delay(50);
-    return pollReservationRequestStatus(
-      app,
-      reservationRequestId,
-      expectedStatus,
-      deadline,
-    );
+    return pollReservationRequestStatus(app, reservationRequestId, expectedStatus, deadline);
   }
 
-  throw new Error(
-    `Reservation request ${reservationRequestId} did not reach ${expectedStatus}`,
-  );
+  throw new Error(`Reservation request ${reservationRequestId} did not reach ${expectedStatus}`);
 }
 
 function delay(milliseconds: number): Promise<void> {

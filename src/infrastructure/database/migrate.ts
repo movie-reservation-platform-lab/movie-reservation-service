@@ -1,19 +1,12 @@
 import knexFactory from 'knex';
 
 import { config } from '../../config';
-import {
-  createKnexConfig,
-  createPostgresConnectionSettings,
-} from './knex-config';
+import { createKnexConfig, createPostgresConnectionSettings } from './knex-config';
 
 type MigrationCommand = 'latest' | 'status';
 
-export async function runMigrationCommand(
-  command: MigrationCommand,
-): Promise<void> {
-  const database = knexFactory(
-    createKnexConfig(createPostgresConnectionSettings(config)),
-  );
+export async function runMigrationCommand(command: MigrationCommand): Promise<void> {
+  const database = knexFactory(createKnexConfig(createPostgresConnectionSettings(config)));
 
   try {
     if (command === 'latest') {
@@ -75,15 +68,10 @@ function readMigrationStatusResult(value: unknown): {
 }
 
 function isStringArray(value: unknown): value is readonly string[] {
-  return (
-    Array.isArray(value) &&
-    value.every((item): item is string => typeof item === 'string')
-  );
+  return Array.isArray(value) && value.every((item): item is string => typeof item === 'string');
 }
 
-function readMigrationStatusItems(
-  value: unknown,
-): readonly MigrationStatusItem[] {
+function readMigrationStatusItems(value: unknown): readonly MigrationStatusItem[] {
   if (!Array.isArray(value)) {
     throw new Error('Unexpected Knex migration status result');
   }
@@ -118,10 +106,8 @@ function readCommand(args: readonly string[]): MigrationCommand {
 }
 
 if (require.main === module) {
-  void runMigrationCommand(readCommand(process.argv.slice(2))).catch(
-    (error) => {
-      console.error(error instanceof Error ? error.message : error);
-      process.exit(1);
-    },
-  );
+  void runMigrationCommand(readCommand(process.argv.slice(2))).catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
 }

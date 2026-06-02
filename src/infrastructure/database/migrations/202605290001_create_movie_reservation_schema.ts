@@ -1,12 +1,6 @@
 import type { Knex } from 'knex';
 
-const reservationRequestStatuses = [
-  'REQUESTED',
-  'PROCESSING',
-  'CONFIRMED',
-  'REJECTED',
-  'FAILED',
-] as const;
+const reservationRequestStatuses = ['REQUESTED', 'PROCESSING', 'CONFIRMED', 'REJECTED', 'FAILED'] as const;
 
 const processingAttemptOutcomes = ['confirmed', 'rejected', 'failed'] as const;
 
@@ -19,11 +13,7 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.schema.createTable('movies', (table) => {
     table.uuid('id').primary();
-    table
-      .uuid('movie_provider_id')
-      .notNullable()
-      .references('id')
-      .inTable('movie_providers');
+    table.uuid('movie_provider_id').notNullable().references('id').inTable('movie_providers');
     table.text('title').notNullable();
     table.text('rating').notNullable();
     table.integer('duration_minutes').notNullable();
@@ -33,11 +23,7 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.schema.createTable('auditoriums', (table) => {
     table.uuid('id').primary();
-    table
-      .uuid('movie_provider_id')
-      .notNullable()
-      .references('id')
-      .inTable('movie_providers');
+    table.uuid('movie_provider_id').notNullable().references('id').inTable('movie_providers');
     table.text('name').notNullable();
     table.unique(['id', 'movie_provider_id']);
     table.index(['movie_provider_id']);
@@ -45,25 +31,14 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.schema.createTable('screenings', (table) => {
     table.uuid('id').primary();
-    table
-      .uuid('movie_provider_id')
-      .notNullable()
-      .references('id')
-      .inTable('movie_providers');
+    table.uuid('movie_provider_id').notNullable().references('id').inTable('movie_providers');
     table.uuid('movie_id').notNullable().references('id').inTable('movies');
-    table
-      .uuid('auditorium_id')
-      .notNullable()
-      .references('id')
-      .inTable('auditoriums');
+    table.uuid('auditorium_id').notNullable().references('id').inTable('auditoriums');
     table.timestamp('starts_at', { useTz: true }).notNullable();
     table.timestamp('ends_at', { useTz: true }).notNullable();
     table.unique(['id', 'movie_provider_id']);
     table.unique(['id', 'movie_provider_id', 'auditorium_id']);
-    table
-      .foreign(['movie_id', 'movie_provider_id'])
-      .references(['id', 'movie_provider_id'])
-      .inTable('movies');
+    table.foreign(['movie_id', 'movie_provider_id']).references(['id', 'movie_provider_id']).inTable('movies');
     table
       .foreign(['auditorium_id', 'movie_provider_id'])
       .references(['id', 'movie_provider_id'])
@@ -75,16 +50,8 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.schema.createTable('seats', (table) => {
     table.uuid('id').primary();
-    table
-      .uuid('movie_provider_id')
-      .notNullable()
-      .references('id')
-      .inTable('movie_providers');
-    table
-      .uuid('auditorium_id')
-      .notNullable()
-      .references('id')
-      .inTable('auditoriums');
+    table.uuid('movie_provider_id').notNullable().references('id').inTable('movie_providers');
+    table.uuid('auditorium_id').notNullable().references('id').inTable('auditoriums');
     table.text('row_label').notNullable();
     table.integer('seat_number').notNullable();
     table.unique(['auditorium_id', 'row_label', 'seat_number']);
@@ -101,16 +68,8 @@ export async function up(knex: Knex): Promise<void> {
   await knex.schema.createTable('reservation_requests', (table) => {
     table.uuid('id').primary();
     table.specificType('sequence', 'bigint generated always as identity');
-    table
-      .uuid('movie_provider_id')
-      .notNullable()
-      .references('id')
-      .inTable('movie_providers');
-    table
-      .uuid('screening_id')
-      .notNullable()
-      .references('id')
-      .inTable('screenings');
+    table.uuid('movie_provider_id').notNullable().references('id').inTable('movie_providers');
+    table.uuid('screening_id').notNullable().references('id').inTable('screenings');
     table.text('requested_by_user_id').notNullable();
     table.text('status').notNullable();
     table.timestamp('requested_at', { useTz: true }).notNullable();
@@ -125,10 +84,7 @@ export async function up(knex: Knex): Promise<void> {
     table.timestamp('updated_at', { useTz: true }).notNullable();
     table.unique(['sequence']);
     table.unique(['id', 'movie_provider_id', 'screening_id']);
-    table
-      .foreign(['screening_id', 'movie_provider_id'])
-      .references(['id', 'movie_provider_id'])
-      .inTable('screenings');
+    table.foreign(['screening_id', 'movie_provider_id']).references(['id', 'movie_provider_id']).inTable('screenings');
     table.index(['movie_provider_id']);
     table.index(['status', 'sequence']);
     table.index(['status', 'claim_expires_at', 'sequence']);
@@ -172,28 +128,12 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.schema.createTable('reservations', (table) => {
     table.uuid('id').primary();
-    table
-      .uuid('movie_provider_id')
-      .notNullable()
-      .references('id')
-      .inTable('movie_providers');
-    table
-      .uuid('reservation_request_id')
-      .notNullable()
-      .unique()
-      .references('id')
-      .inTable('reservation_requests');
-    table
-      .uuid('screening_id')
-      .notNullable()
-      .references('id')
-      .inTable('screenings');
+    table.uuid('movie_provider_id').notNullable().references('id').inTable('movie_providers');
+    table.uuid('reservation_request_id').notNullable().unique().references('id').inTable('reservation_requests');
+    table.uuid('screening_id').notNullable().references('id').inTable('screenings');
     table.text('reserved_by_user_id').notNullable();
     table.timestamp('confirmed_at', { useTz: true }).notNullable();
-    table
-      .foreign(['screening_id', 'movie_provider_id'])
-      .references(['id', 'movie_provider_id'])
-      .inTable('screenings');
+    table.foreign(['screening_id', 'movie_provider_id']).references(['id', 'movie_provider_id']).inTable('screenings');
     table
       .foreign(['reservation_request_id', 'movie_provider_id', 'screening_id'])
       .references(['id', 'movie_provider_id', 'screening_id'])
@@ -230,30 +170,24 @@ export async function up(knex: Knex): Promise<void> {
     table.index(['seat_id']);
   });
 
-  await knex.schema.createTable(
-    'reservation_request_processing_attempts',
-    (table) => {
-      table.bigIncrements('id').primary();
-      table
-        .uuid('reservation_request_id')
-        .notNullable()
-        .references('id')
-        .inTable('reservation_requests')
-        .onDelete('CASCADE');
-      table.bigInteger('reservation_request_sequence').notNullable();
-      table.timestamp('started_at', { useTz: true }).notNullable();
-      table.timestamp('completed_at', { useTz: true }).notNullable();
-      table.text('outcome').notNullable();
-      table.text('reason');
-      table.uuid('reservation_id').references('id').inTable('reservations');
-      table
-        .uuid('conflicting_reservation_id')
-        .references('id')
-        .inTable('reservations');
-      table.index(['reservation_request_id']);
-      table.index(['outcome']);
-    },
-  );
+  await knex.schema.createTable('reservation_request_processing_attempts', (table) => {
+    table.bigIncrements('id').primary();
+    table
+      .uuid('reservation_request_id')
+      .notNullable()
+      .references('id')
+      .inTable('reservation_requests')
+      .onDelete('CASCADE');
+    table.bigInteger('reservation_request_sequence').notNullable();
+    table.timestamp('started_at', { useTz: true }).notNullable();
+    table.timestamp('completed_at', { useTz: true }).notNullable();
+    table.text('outcome').notNullable();
+    table.text('reason');
+    table.uuid('reservation_id').references('id').inTable('reservations');
+    table.uuid('conflicting_reservation_id').references('id').inTable('reservations');
+    table.index(['reservation_request_id']);
+    table.index(['outcome']);
+  });
   await addTextEnumConstraint(
     knex,
     'reservation_request_processing_attempts',
@@ -288,9 +222,7 @@ export async function up(knex: Knex): Promise<void> {
 }
 
 export async function down(knex: Knex): Promise<void> {
-  await knex.schema.dropTableIfExists(
-    'reservation_request_processing_attempts',
-  );
+  await knex.schema.dropTableIfExists('reservation_request_processing_attempts');
   await knex.schema.dropTableIfExists('reservation_seats');
   await knex.schema.dropTableIfExists('reservations');
   await knex.schema.dropTableIfExists('reservation_request_seats');
@@ -309,9 +241,7 @@ async function addTextEnumConstraint(
   constraintName: string,
   allowedValues: readonly string[],
 ): Promise<void> {
-  const quotedValues = allowedValues
-    .map((value) => knex.raw('?', [value]).toQuery())
-    .join(', ');
+  const quotedValues = allowedValues.map((value) => knex.raw('?', [value]).toQuery()).join(', ');
 
   await knex.raw(`
     alter table ${tableName}

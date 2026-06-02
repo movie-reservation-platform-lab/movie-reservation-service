@@ -6,10 +6,7 @@ import {
   type MovieReservationDemoData,
   MOVIE_RESERVATION_DEMO_IDS,
 } from '../fixtures/movie-reservations/movie-reservation-demo-data';
-import {
-  createKnexConfig,
-  createPostgresConnectionSettings,
-} from './knex-config';
+import { createKnexConfig, createPostgresConnectionSettings } from './knex-config';
 
 /**
  * Writes the shared movie-reservation demo catalog into Postgres.
@@ -18,9 +15,7 @@ import {
  * key and join rows are ignored when already present, so local developers and
  * e2e tests can run it repeatedly against the same database.
  */
-export async function seedLocalMovieReservationCatalog(
-  database: Knex,
-): Promise<void> {
+export async function seedLocalMovieReservationCatalog(database: Knex): Promise<void> {
   const demoData = createMovieReservationDemoData();
   const requestedAt = '2026-05-29T00:00:00.000Z';
 
@@ -130,10 +125,7 @@ export async function seedLocalMovieReservationCatalog(
         demoData.reservationRequests.flatMap((reservationRequest) => {
           // The join table stores the screening/auditorium context so Postgres
           // can enforce that selected seats belong to the requested screening.
-          const auditoriumId = requireSeedScreeningAuditoriumId(
-            demoData,
-            reservationRequest.screeningId,
-          );
+          const auditoriumId = requireSeedScreeningAuditoriumId(demoData, reservationRequest.screeningId);
 
           return reservationRequest.seatIds.map((seatId) => ({
             reservation_request_id: reservationRequest.id,
@@ -166,10 +158,7 @@ export async function seedLocalMovieReservationCatalog(
         demoData.reservations.flatMap((reservation) => {
           // Confirmed reservations repeat the same context for the same reason:
           // database constraints reject seats from a different auditorium.
-          const auditoriumId = requireSeedScreeningAuditoriumId(
-            demoData,
-            reservation.screeningId,
-          );
+          const auditoriumId = requireSeedScreeningAuditoriumId(demoData, reservation.screeningId);
 
           return reservation.seatIds.map((seatId) => ({
             reservation_id: reservation.id,
@@ -186,9 +175,7 @@ export async function seedLocalMovieReservationCatalog(
 }
 
 export async function runLocalSeed(): Promise<void> {
-  const database = knexFactory(
-    createKnexConfig(createPostgresConnectionSettings(config)),
-  );
+  const database = knexFactory(createKnexConfig(createPostgresConnectionSettings(config)));
 
   try {
     await seedLocalMovieReservationCatalog(database);
@@ -213,13 +200,8 @@ if (require.main === module) {
   });
 }
 
-function requireSeedScreeningAuditoriumId(
-  demoData: MovieReservationDemoData,
-  screeningId: string,
-): string {
-  const screening = demoData.screenings.find(
-    (candidate) => candidate.id === screeningId,
-  );
+function requireSeedScreeningAuditoriumId(demoData: MovieReservationDemoData, screeningId: string): string {
+  const screening = demoData.screenings.find((candidate) => candidate.id === screeningId);
 
   if (screening === undefined) {
     throw new Error(`Seed screening ${screeningId} was not found`);

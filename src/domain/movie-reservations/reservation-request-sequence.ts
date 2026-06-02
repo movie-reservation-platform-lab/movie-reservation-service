@@ -11,13 +11,9 @@ export type ReservationRequestSequence = number & {
   readonly [reservationRequestSequenceBrand]: 'ReservationRequestSequence';
 };
 
-export function createReservationRequestSequence(
-  value: number,
-): ReservationRequestSequence {
+export function createReservationRequestSequence(value: number): ReservationRequestSequence {
   if (!Number.isSafeInteger(value) || value < 1) {
-    throw new Error(
-      'ReservationRequestSequence must be a positive safe integer',
-    );
+    throw new Error('ReservationRequestSequence must be a positive safe integer');
   }
 
   return value as ReservationRequestSequence;

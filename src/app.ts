@@ -10,10 +10,7 @@ import { config } from './config.js';
  * TODO: move the logging setup to a dedicated place - its a cross cutting
  *  concern, refactor into structured logging
  */
-function getNestLogger(
-  logLevel: typeof config.LOG_LEVEL,
-  nodeEnv: typeof config.NODE_ENV,
-): LogLevel[] | false {
+function getNestLogger(logLevel: typeof config.LOG_LEVEL, nodeEnv: typeof config.NODE_ENV): LogLevel[] | false {
   if (nodeEnv === 'test') {
     return false;
   }
@@ -33,9 +30,7 @@ function getNestLogger(
   return ['log', 'warn', 'error'];
 }
 
-export async function createApp(
-  options: AppModuleOptions = {},
-): Promise<INestApplication> {
+export async function createApp(options: AppModuleOptions = {}): Promise<INestApplication> {
   const logger = getNestLogger(config.LOG_LEVEL, config.NODE_ENV);
   const app = await NestFactory.create(AppModule.forRoot(options), {
     logger: logger,

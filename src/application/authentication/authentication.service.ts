@@ -15,9 +15,7 @@ import type { AuthenticatedUser } from '../../domain/authentication/authenticate
 export class AuthenticationService {
   constructor(private readonly authenticationManager: AuthenticationManager) {}
 
-  async authenticateJwtToken(
-    token: string | undefined,
-  ): Promise<AuthenticatedUser> {
+  async authenticateJwtToken(token: string | undefined): Promise<AuthenticatedUser> {
     return this.authenticationManager.authenticateJwtToken(token);
   }
 }

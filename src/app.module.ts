@@ -6,14 +6,8 @@ import { generatedGraphqlSchemaPath } from './generated-graphql-schema';
 import type { ActorContext } from './application/authentication/actor-context';
 import type { AuthenticatedUser } from './domain/authentication/authenticated-user';
 import { config } from './config';
-import {
-  createAppComposition,
-  type AppCompositionOverrides,
-} from './di/app-composition';
-import type {
-  GraphqlHttpRequest,
-  MovieReservationGraphqlContext,
-} from './presentation/graphql/graphql-context';
+import { createAppComposition, type AppCompositionOverrides } from './di/app-composition';
+import type { GraphqlHttpRequest, MovieReservationGraphqlContext } from './presentation/graphql/graphql-context';
 import { MovieReservationsGraphqlModule } from './presentation/graphql/movie-reservations-graphql.module';
 import type { GraphqlOperationLogger } from './presentation/graphql/plugins/graphql-operation-logging.plugin';
 import { createGraphqlOperationLoggingPlugin } from './presentation/graphql/plugins/graphql-operation-logging.plugin';
@@ -35,11 +29,7 @@ export class AppModule {
   static forRoot(options: AppModuleOptions = {}): DynamicModule {
     const appComposition = createAppComposition(options);
 
-    const gqlContext = ({
-      req,
-    }: {
-      req: GraphqlHttpRequest;
-    }): MovieReservationGraphqlContext => ({
+    const gqlContext = ({ req }: { req: GraphqlHttpRequest }): MovieReservationGraphqlContext => ({
       req,
       authenticatedUser: requireAuthenticatedUser(req),
       actor: requireActor(req),
@@ -49,9 +39,7 @@ export class AppModule {
       autoSchemaFile: generatedGraphqlSchemaPath,
       sortSchema: true,
       context: gqlContext,
-      plugins: [
-        createGraphqlOperationLoggingPlugin(options.graphqlOperationLogger),
-      ],
+      plugins: [createGraphqlOperationLoggingPlugin(options.graphqlOperationLogger)],
       graphiql: config.ENABLE_GRAPHIQL,
       playground: false,
     } satisfies ApolloDriverConfig;
@@ -61,9 +49,7 @@ export class AppModule {
       imports: [
         GraphQLModule.forRoot<ApolloDriverConfig>(gqlModuleOptions),
         HealthModule,
-        MovieReservationsGraphqlModule.forRoot(
-          appComposition.movieReservations,
-        ),
+        MovieReservationsGraphqlModule.forRoot(appComposition.movieReservations),
       ],
     };
   }

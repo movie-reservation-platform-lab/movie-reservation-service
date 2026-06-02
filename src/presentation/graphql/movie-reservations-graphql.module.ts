@@ -1,9 +1,4 @@
-import {
-  type DynamicModule,
-  MiddlewareConsumer,
-  Module,
-  type NestModule,
-} from '@nestjs/common';
+import { type DynamicModule, MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 
 import {
   MovieReservationsCompositionModule,

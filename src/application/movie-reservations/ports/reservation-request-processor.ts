@@ -23,9 +23,7 @@ export interface ReservationRequestProcessor {
    * processing mutation. Those runtime concerns can be added later around this
    * small contract.
    */
-  processNextPendingRequest(
-    input?: ReservationRequestProcessingInput,
-  ): Promise<ReservationRequestProcessingResult>;
+  processNextPendingRequest(input?: ReservationRequestProcessingInput): Promise<ReservationRequestProcessingResult>;
 }
 
 export interface ReservationRequestProcessingInput {

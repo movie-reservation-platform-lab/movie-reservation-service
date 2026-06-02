@@ -3,12 +3,7 @@ import { type DynamicModule, Module, type Provider } from '@nestjs/common';
 import { AuthenticationService } from '../../application/authentication/authentication.service';
 import { AuthorizationService } from '../../application/authorization/authorization.service';
 import { MovieReservationsService } from '../../application/movie-reservations/movie-reservations.service';
-import {
-  config,
-  type AuthMode,
-  type PersistenceMode,
-  type ReservationWorkerMode,
-} from '../../config';
+import { config, type AuthMode, type PersistenceMode, type ReservationWorkerMode } from '../../config';
 import { createAuthenticationProviders } from './authentication.providers';
 import {
   CLOCK,
@@ -18,10 +13,7 @@ import {
   RESERVATION_REQUEST_PROCESSOR,
   RESERVATION_REQUEST_WORK_REPOSITORY,
 } from './movie-reservation.tokens';
-import {
-  createPersistenceExports,
-  createPersistenceProviders,
-} from './persistence.providers';
+import { createPersistenceExports, createPersistenceProviders } from './persistence.providers';
 import { createReservationWorkerProviders } from './reservation-worker.providers';
 import { createMovieReservationUseCaseProviders } from './use-case.providers';
 
@@ -54,12 +46,9 @@ export class MovieReservationsCompositionModule {
 /**
  * Compose the focused provider groups selected by the runtime profile.
  */
-function createProviders(
-  options: MovieReservationsCompositionOptions,
-): Provider[] {
+function createProviders(options: MovieReservationsCompositionOptions): Provider[] {
   const persistenceMode = options.persistenceMode ?? 'in-memory';
-  const reservationWorkerMode =
-    options.reservationWorkerMode ?? config.RESERVATION_WORKER_MODE;
+  const reservationWorkerMode = options.reservationWorkerMode ?? config.RESERVATION_WORKER_MODE;
 
   return [
     ...createAuthenticationProviders(options.authMode),

@@ -23,29 +23,18 @@ export class InMemoryMovieReservationRepository implements MovieReservationRepos
   constructor(private readonly store: InMemoryMovieReservationStore) {}
 
   static withSeedData(): InMemoryMovieReservationRepository {
-    return new InMemoryMovieReservationRepository(
-      InMemoryMovieReservationStore.withSeedData(),
-    );
+    return new InMemoryMovieReservationRepository(InMemoryMovieReservationStore.withSeedData());
   }
 
-  async findMovieProviderById(
-    movieProviderId: MovieProviderId,
-  ): Promise<MovieProvider | null> {
+  async findMovieProviderById(movieProviderId: MovieProviderId): Promise<MovieProvider | null> {
     return this.store.movieProvidersById.get(movieProviderId) ?? null;
   }
 
-  async findMoviesByProviderId(
-    movieProviderId: MovieProviderId,
-  ): Promise<readonly Movie[]> {
-    return Array.from(this.store.moviesById.values()).filter(
-      (movie) => movie.movieProviderId === movieProviderId,
-    );
+  async findMoviesByProviderId(movieProviderId: MovieProviderId): Promise<readonly Movie[]> {
+    return Array.from(this.store.moviesById.values()).filter((movie) => movie.movieProviderId === movieProviderId);
   }
 
-  async findMovieById(
-    movieProviderId: MovieProviderId,
-    movieId: MovieId,
-  ): Promise<Movie | null> {
+  async findMovieById(movieProviderId: MovieProviderId, movieId: MovieId): Promise<Movie | null> {
     const movie = this.store.moviesById.get(movieId);
 
     if (movie === undefined || movie.movieProviderId !== movieProviderId) {
@@ -72,33 +61,22 @@ export class InMemoryMovieReservationRepository implements MovieReservationRepos
   ): Promise<Screening | null> {
     const screening = this.store.screeningsById.get(screeningId);
 
-    if (
-      screening === undefined ||
-      screening.movieProviderId !== movieProviderId
-    ) {
+    if (screening === undefined || screening.movieProviderId !== movieProviderId) {
       return null;
     }
 
     return screening;
   }
 
-  async findSeatsByScreeningId(
-    movieProviderId: MovieProviderId,
-    screeningId: ScreeningId,
-  ): Promise<readonly Seat[]> {
+  async findSeatsByScreeningId(movieProviderId: MovieProviderId, screeningId: ScreeningId): Promise<readonly Seat[]> {
     const screening = this.store.screeningsById.get(screeningId);
 
-    if (
-      screening === undefined ||
-      screening.movieProviderId !== movieProviderId
-    ) {
+    if (screening === undefined || screening.movieProviderId !== movieProviderId) {
       return [];
     }
 
     return Array.from(this.store.seatsById.values()).filter(
-      (seat) =>
-        seat.movieProviderId === movieProviderId &&
-        seat.auditoriumId === screening.auditoriumId,
+      (seat) => seat.movieProviderId === movieProviderId && seat.auditoriumId === screening.auditoriumId,
     );
   }
 
@@ -113,9 +91,7 @@ export class InMemoryMovieReservationRepository implements MovieReservationRepos
       })),
     );
 
-    return new Map(
-      screeningSeats.map(({ screeningId, seats }) => [screeningId, seats]),
-    );
+    return new Map(screeningSeats.map(({ screeningId, seats }) => [screeningId, seats]));
   }
 
   async findSeatsByIdsForScreening(
@@ -125,10 +101,7 @@ export class InMemoryMovieReservationRepository implements MovieReservationRepos
   ): Promise<readonly Seat[]> {
     const screening = this.store.screeningsById.get(screeningId);
 
-    if (
-      screening === undefined ||
-      screening.movieProviderId !== movieProviderId
-    ) {
+    if (screening === undefined || screening.movieProviderId !== movieProviderId) {
       return [];
     }
 
@@ -142,27 +115,19 @@ export class InMemoryMovieReservationRepository implements MovieReservationRepos
     );
   }
 
-  async findReservationRequestById(
-    reservationRequestId: ReservationRequestId,
-  ): Promise<ReservationRequest | null> {
+  async findReservationRequestById(reservationRequestId: ReservationRequestId): Promise<ReservationRequest | null> {
     return this.store.reservationRequestsById.get(reservationRequestId) ?? null;
   }
 
-  async saveReservationRequest(
-    reservationRequest: ReservationRequest,
-  ): Promise<void> {
+  async saveReservationRequest(reservationRequest: ReservationRequest): Promise<void> {
     this.store.saveReservationRequest(reservationRequest);
   }
 
-  async findReservationById(
-    reservationId: ReservationId,
-  ): Promise<Reservation | null> {
+  async findReservationById(reservationId: ReservationId): Promise<Reservation | null> {
     return this.store.reservationsById.get(reservationId) ?? null;
   }
 
-  async findReservationByReservationRequestId(
-    reservationRequestId: ReservationRequestId,
-  ): Promise<Reservation | null> {
+  async findReservationByReservationRequestId(reservationRequestId: ReservationRequestId): Promise<Reservation | null> {
     for (const reservation of this.store.reservationsById.values()) {
       if (reservation.reservationRequestId === reservationRequestId) {
         return reservation;

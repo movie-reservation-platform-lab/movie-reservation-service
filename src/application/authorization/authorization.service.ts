@@ -14,10 +14,7 @@ import type { ReservationRequest } from '../../domain/movie-reservations/reserva
  *
  */
 export class AuthorizationService {
-  canReadReservationRequest(
-    actor: ActorContext,
-    reservationRequest: ReservationRequest,
-  ): boolean {
+  canReadReservationRequest(actor: ActorContext, reservationRequest: ReservationRequest): boolean {
     if (actor.movieProviderId !== reservationRequest.movieProviderId) {
       return false;
     }

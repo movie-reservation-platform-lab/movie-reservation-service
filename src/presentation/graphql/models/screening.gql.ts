@@ -3,8 +3,7 @@ import { Field, ID, ObjectType } from '@nestjs/graphql';
 import { SeatGql } from './seat.gql';
 
 @ObjectType('Screening', {
-  description:
-    'Scheduled showing of a movie in an auditorium during a specific time window.',
+  description: 'Scheduled showing of a movie in an auditorium during a specific time window.',
 })
 export class ScreeningGql {
   @Field(() => ID, {
@@ -33,8 +32,7 @@ export class ScreeningGql {
   endsAt!: string;
 
   @Field(() => [SeatGql], {
-    description:
-      'Auditorium seats for this screening. This is not yet a dedicated availability calculation.',
+    description: 'Auditorium seats for this screening. This is not yet a dedicated availability calculation.',
   })
   seats!: SeatGql[];
 }

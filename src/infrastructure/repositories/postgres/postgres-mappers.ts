@@ -5,10 +5,7 @@ import type { Movie } from '../../../domain/movie-reservations/movie';
 import { createMovieId } from '../../../domain/movie-reservations/movie-id';
 import type { MovieProvider } from '../../../domain/movie-reservations/movie-provider';
 import { createMovieProviderId } from '../../../domain/movie-reservations/movie-provider-id';
-import {
-  createReservation,
-  type Reservation,
-} from '../../../domain/movie-reservations/reservation';
+import { createReservation, type Reservation } from '../../../domain/movie-reservations/reservation';
 import { createReservationId } from '../../../domain/movie-reservations/reservation-id';
 import type { ReservationRequest } from '../../../domain/movie-reservations/reservation-request';
 import { createReservationRequestId } from '../../../domain/movie-reservations/reservation-request-id';
@@ -20,10 +17,7 @@ import { ReservationRequestStatus } from '../../../domain/movie-reservations/res
 import type { Screening } from '../../../domain/movie-reservations/screening';
 import { createScreeningId } from '../../../domain/movie-reservations/screening-id';
 import type { Seat } from '../../../domain/movie-reservations/seat';
-import {
-  createSeatId,
-  type SeatId,
-} from '../../../domain/movie-reservations/seat-id';
+import { createSeatId, type SeatId } from '../../../domain/movie-reservations/seat-id';
 import type { ReservationRequestProcessingAttempt } from '../../../application/movie-reservations/reservation-request-processing-attempt';
 
 export interface MovieProviderRow {
@@ -149,10 +143,7 @@ export function toSeat(row: SeatRow): Seat {
   };
 }
 
-export function toReservationRequest(
-  row: ReservationRequestRow,
-  seatIds: readonly SeatId[],
-): ReservationRequest {
+export function toReservationRequest(row: ReservationRequestRow, seatIds: readonly SeatId[]): ReservationRequest {
   return {
     id: createReservationRequestId(row.id),
     movieProviderId: createMovieProviderId(row.movie_provider_id),
@@ -163,16 +154,11 @@ export function toReservationRequest(
   };
 }
 
-export function toReservation(
-  row: ReservationRow,
-  seatIds: readonly SeatId[],
-): Reservation {
+export function toReservation(row: ReservationRow, seatIds: readonly SeatId[]): Reservation {
   return createReservation({
     id: createReservationId(row.id),
     movieProviderId: createMovieProviderId(row.movie_provider_id),
-    reservationRequestId: createReservationRequestId(
-      row.reservation_request_id,
-    ),
+    reservationRequestId: createReservationRequestId(row.reservation_request_id),
     screeningId: createScreeningId(row.screening_id),
     seatIds,
     reservedByUserId: createUserId(row.reserved_by_user_id),
@@ -180,9 +166,7 @@ export function toReservation(
   });
 }
 
-export function toReservationRequestSequence(
-  value: number | string,
-): ReservationRequestSequence {
+export function toReservationRequestSequence(value: number | string): ReservationRequestSequence {
   return createReservationRequestSequence(Number(value));
 }
 
@@ -190,9 +174,7 @@ export function toReservationRequestProcessingAttempt(
   row: ReservationRequestProcessingAttemptRow,
 ): ReservationRequestProcessingAttempt {
   const base = {
-    reservationRequestId: createReservationRequestId(
-      row.reservation_request_id,
-    ),
+    reservationRequestId: createReservationRequestId(row.reservation_request_id),
     sequence: toReservationRequestSequence(row.reservation_request_sequence),
     startedAt: toIsoString(row.started_at),
     completedAt: toIsoString(row.completed_at),
@@ -206,25 +188,16 @@ export function toReservationRequestProcessingAttempt(
     };
   }
 
-  if (
-    row.outcome === 'rejected' &&
-    row.reason === 'seat-conflict' &&
-    row.conflicting_reservation_id !== null
-  ) {
+  if (row.outcome === 'rejected' && row.reason === 'seat-conflict' && row.conflicting_reservation_id !== null) {
     return {
       ...base,
       outcome: 'rejected',
       reason: 'seat-conflict',
-      conflictingReservationId: createReservationId(
-        row.conflicting_reservation_id,
-      ),
+      conflictingReservationId: createReservationId(row.conflicting_reservation_id),
     };
   }
 
-  if (
-    row.outcome === 'failed' &&
-    (row.reason === 'unexpected-error' || row.reason === 'lease-timeout')
-  ) {
+  if (row.outcome === 'failed' && (row.reason === 'unexpected-error' || row.reason === 'lease-timeout')) {
     return {
       ...base,
       outcome: 'failed',
@@ -232,9 +205,7 @@ export function toReservationRequestProcessingAttempt(
     };
   }
 
-  throw new Error(
-    `Invalid reservation request processing attempt row for ${row.reservation_request_id}`,
-  );
+  throw new Error(`Invalid reservation request processing attempt row for ${row.reservation_request_id}`);
 }
 
 export function toIsoString(value: Date | string): string {
@@ -245,14 +216,8 @@ export function toIsoString(value: Date | string): string {
   return new Date(value).toISOString();
 }
 
-function parseReservationRequestStatus(
-  value: string,
-): ReservationRequestStatus {
-  if (
-    Object.values(ReservationRequestStatus).includes(
-      value as ReservationRequestStatus,
-    )
-  ) {
+function parseReservationRequestStatus(value: string): ReservationRequestStatus {
+  if (Object.values(ReservationRequestStatus).includes(value as ReservationRequestStatus)) {
     return value as ReservationRequestStatus;
   }
 

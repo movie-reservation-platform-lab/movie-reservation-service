@@ -3,11 +3,7 @@ import type { Knex } from 'knex';
 import type { Reservation } from '../../../domain/movie-reservations/reservation';
 import type { ScreeningId } from '../../../domain/movie-reservations/screening-id';
 import type { SeatId } from '../../../domain/movie-reservations/seat-id';
-import {
-  type ReservationRow,
-  type ScreeningRow,
-  toReservation,
-} from './postgres-mappers';
+import { type ReservationRow, type ScreeningRow, toReservation } from './postgres-mappers';
 import { findReservationSeatIds } from './postgres-reservation-seat-lookup';
 
 /**
@@ -46,15 +42,10 @@ export class PostgresReservationStore {
       .first();
 
     if (row === undefined) {
-      throw new Error(
-        `Confirmed reservation ${reservationSeatRow.reservation_id} was not found`,
-      );
+      throw new Error(`Confirmed reservation ${reservationSeatRow.reservation_id} was not found`);
     }
 
-    return toReservation(
-      row,
-      await findReservationSeatIds(this.database, row.id),
-    );
+    return toReservation(row, await findReservationSeatIds(this.database, row.id));
   }
 
   /**
@@ -63,10 +54,7 @@ export class PostgresReservationStore {
    * The screening lookup supplies the auditorium id required by the composite
    * foreign keys that prevent seats from another auditorium being attached.
    */
-  async insertReservation(
-    trx: Knex.Transaction,
-    reservation: Reservation,
-  ): Promise<void> {
+  async insertReservation(trx: Knex.Transaction, reservation: Reservation): Promise<void> {
     const screeningRow = await this.requireScreeningRowForProvider(
       trx,
       reservation.movieProviderId,

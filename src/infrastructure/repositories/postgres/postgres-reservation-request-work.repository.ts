@@ -44,10 +44,7 @@ export class PostgresReservationRequestWorkRepository implements ReservationRequ
 
   constructor(private readonly database: Knex) {
     this.requestStateStore = new PostgresReservationRequestStateStore(database);
-    this.requestClaimer = new PostgresReservationRequestClaimer(
-      database,
-      this.requestStateStore,
-    );
+    this.requestClaimer = new PostgresReservationRequestClaimer(database, this.requestStateStore);
     this.reservationStore = new PostgresReservationStore(database);
   }
 
@@ -57,9 +54,7 @@ export class PostgresReservationRequestWorkRepository implements ReservationRequ
     return this.requestClaimer.claimNextPendingReservationRequest(input);
   }
 
-  heartbeatClaimedReservationRequest(
-    input: HeartbeatClaimedReservationRequestInput,
-  ): Promise<boolean> {
+  heartbeatClaimedReservationRequest(input: HeartbeatClaimedReservationRequestInput): Promise<boolean> {
     return this.requestClaimer.heartbeatClaimedReservationRequest(input);
   }
 
@@ -74,20 +69,15 @@ export class PostgresReservationRequestWorkRepository implements ReservationRequ
     input: ConfirmClaimedReservationRequestInput,
   ): Promise<ConfirmClaimedReservationRequestResult> {
     try {
-      const reservationRequest = await this.database.transaction(
-        async (trx) => {
-          await this.requestStateStore.requireClaimedProcessingRequest(
-            trx,
-            input.claimedWorkItem,
-          );
-          await this.reservationStore.insertReservation(trx, input.reservation);
-          return this.requestStateStore.markClaimedReservationRequestConfirmed({
-            trx,
-            claimedWorkItem: input.claimedWorkItem,
-            attempt: input.attempt,
-          });
-        },
-      );
+      const reservationRequest = await this.database.transaction(async (trx) => {
+        await this.requestStateStore.requireClaimedProcessingRequest(trx, input.claimedWorkItem);
+        await this.reservationStore.insertReservation(trx, input.reservation);
+        return this.requestStateStore.markClaimedReservationRequestConfirmed({
+          trx,
+          claimedWorkItem: input.claimedWorkItem,
+          attempt: input.attempt,
+        });
+      });
 
       return {
         outcome: 'confirmed',
@@ -106,20 +96,14 @@ export class PostgresReservationRequestWorkRepository implements ReservationRequ
     error: unknown,
     input: ConfirmClaimedReservationRequestInput,
   ): Promise<ConfirmClaimedReservationRequestResult> {
-    if (
-      !isPostgresUniqueViolation(
-        error,
-        'reservation_seats_screening_id_seat_id_unique',
-      )
-    ) {
+    if (!isPostgresUniqueViolation(error, 'reservation_seats_screening_id_seat_id_unique')) {
       throw error;
     }
 
-    const conflict =
-      await this.reservationStore.findConflictingConfirmedReservation({
-        screeningId: input.reservation.screeningId,
-        seatIds: input.reservation.seatIds,
-      });
+    const conflict = await this.reservationStore.findConflictingConfirmedReservation({
+      screeningId: input.reservation.screeningId,
+      seatIds: input.reservation.seatIds,
+    });
 
     if (conflict === null) {
       throw error;
@@ -134,12 +118,11 @@ export class PostgresReservationRequestWorkRepository implements ReservationRequ
       reason: 'seat-conflict',
       conflictingReservationId: conflict.id,
     };
-    const rejectedRequest =
-      await this.requestStateStore.rejectClaimedReservationRequest({
-        claimedWorkItem: input.claimedWorkItem,
-        reason: 'seat-conflict',
-        attempt: rejectedAttempt,
-      });
+    const rejectedRequest = await this.requestStateStore.rejectClaimedReservationRequest({
+      claimedWorkItem: input.claimedWorkItem,
+      reason: 'seat-conflict',
+      attempt: rejectedAttempt,
+    });
 
     return {
       outcome: 'rejected',
@@ -161,9 +144,7 @@ export class PostgresReservationRequestWorkRepository implements ReservationRequ
     readonly reason: 'unexpected-error';
     readonly attempt: FailedReservationRequestProcessingAttempt;
   }): Promise<ReservationRequest> {
-    return this.requestStateStore.releaseClaimedReservationRequestForRetry(
-      input,
-    );
+    return this.requestStateStore.releaseClaimedReservationRequestForRetry(input);
   }
 
   failClaimedReservationRequest(input: {
@@ -177,8 +158,6 @@ export class PostgresReservationRequestWorkRepository implements ReservationRequ
   findReservationRequestProcessingAttemptsByRequestId(
     reservationRequestId: ReservationRequestId,
   ): Promise<readonly ReservationRequestProcessingAttempt[]> {
-    return this.requestStateStore.findReservationRequestProcessingAttemptsByRequestId(
-      reservationRequestId,
-    );
+    return this.requestStateStore.findReservationRequestProcessingAttemptsByRequestId(reservationRequestId);
   }
 }

@@ -7,8 +7,7 @@ import { Field, ID, InputType } from '@nestjs/graphql';
  * scope from the authenticated actor context instead of trusting client input.
  */
 @InputType('RequestReservationInput', {
-  description:
-    'Input for creating a reservation request for one screening and one or more seats.',
+  description: 'Input for creating a reservation request for one screening and one or more seats.',
 })
 export class RequestReservationInputGql {
   @Field(() => ID, {

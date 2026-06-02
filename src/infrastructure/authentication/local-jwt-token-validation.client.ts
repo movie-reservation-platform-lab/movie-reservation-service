@@ -1,9 +1,6 @@
 import { decodeJwt } from 'jose';
 
-import type {
-  JwtClaims,
-  TokenValidationClient,
-} from '../../application/authentication/token-validation-client';
+import type { JwtClaims, TokenValidationClient } from '../../application/authentication/token-validation-client';
 import { AuthenticationError } from '../../domain/authentication/authentication-error';
 
 /**

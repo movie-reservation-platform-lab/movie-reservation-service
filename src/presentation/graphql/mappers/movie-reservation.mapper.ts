@@ -22,10 +22,7 @@ export function toMovieGql(movie: Movie): MovieGql {
   return gql;
 }
 
-export function toScreeningGql(
-  screening: Screening,
-  seats: readonly Seat[],
-): ScreeningGql {
+export function toScreeningGql(screening: Screening, seats: readonly Seat[]): ScreeningGql {
   const gql = new ScreeningGql();
   gql.id = screening.id;
   gql.movieId = screening.movieId;
@@ -44,9 +41,7 @@ export function toSeatGql(seat: Seat): SeatGql {
   return gql;
 }
 
-export function toReservationRequestGql(
-  reservationRequest: ReservationRequest,
-): ReservationRequestGql {
+export function toReservationRequestGql(reservationRequest: ReservationRequest): ReservationRequestGql {
   const gql = new ReservationRequestGql();
   gql.id = reservationRequest.id;
   gql.screeningId = reservationRequest.screeningId;

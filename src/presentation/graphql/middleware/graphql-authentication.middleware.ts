@@ -35,11 +35,7 @@ export class GraphqlAuthenticationMiddleware implements NestMiddleware {
     private readonly authenticationService: AuthenticationService,
   ) {}
 
-  async use(
-    req: GraphqlHttpRequest,
-    res: UnauthorizedResponse,
-    next: () => void,
-  ): Promise<void> {
+  async use(req: GraphqlHttpRequest, res: UnauthorizedResponse, next: () => void): Promise<void> {
     if (config.ENABLE_GRAPHIQL && isGraphqlLandingPageRequest(req)) {
       next();
       return;
@@ -47,8 +43,7 @@ export class GraphqlAuthenticationMiddleware implements NestMiddleware {
 
     try {
       const token = extractBearerToken(req.headers);
-      const authenticatedUser =
-        await this.authenticationService.authenticateJwtToken(token);
+      const authenticatedUser = await this.authenticationService.authenticateJwtToken(token);
       req.authenticatedUser = authenticatedUser;
       req.actor = createActorContext(authenticatedUser);
       next();
@@ -77,18 +72,14 @@ function isGraphqlLandingPageRequest(req: GraphqlHttpRequest): boolean {
 
   const acceptedContentTypes = readHeaderValues(req.headers.accept);
 
-  return acceptedContentTypes.some((contentType) =>
-    contentType.includes('text/html'),
-  );
+  return acceptedContentTypes.some((contentType) => contentType.includes('text/html'));
 }
 
 /**
  * A single header value or multi-value header is normalized into a readonly
  * list for simple membership checks.
  */
-function readHeaderValues(
-  headerValue: string | readonly string[] | undefined,
-): readonly string[] {
+function readHeaderValues(headerValue: string | readonly string[] | undefined): readonly string[] {
   if (headerValue === undefined) {
     return [];
   }

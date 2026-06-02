@@ -14,13 +14,11 @@ registerEnumType(UserRole, {
  * decorators exist at runtime so NestJS can generate the GraphQL schema.
  */
 @ObjectType('AuthenticatedUser', {
-  description:
-    'Authenticated user and tenant context derived from the request authentication layer.',
+  description: 'Authenticated user and tenant context derived from the request authentication layer.',
 })
 export class AuthenticatedUserGql {
   @Field(() => ID, {
-    description:
-      'Stable user id from the authentication provider or local profile.',
+    description: 'Stable user id from the authentication provider or local profile.',
   })
   userId!: string;
 
@@ -35,15 +33,13 @@ export class AuthenticatedUserGql {
   email!: string;
 
   @Field(() => ID, {
-    description:
-      'Movie provider id used as the tenant boundary for movie reservation data.',
+    description: 'Movie provider id used as the tenant boundary for movie reservation data.',
   })
   movieProviderId!: string;
 
   @Field(() => String, {
     nullable: true,
-    description:
-      'Optional human-readable movie provider code from authentication claims.',
+    description: 'Optional human-readable movie provider code from authentication claims.',
   })
   movieProviderCode?: string;
 

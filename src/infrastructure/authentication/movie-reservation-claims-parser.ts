@@ -12,19 +12,12 @@ import type { JwtClaims } from '../../application/authentication/token-validatio
  * do not know this service's domain-specific tenant claim, role vocabulary, or
  * fallback username rules. That mapping belongs here.
  */
-export function parseMovieReservationClaims(
-  claims: JwtClaims,
-): AuthenticatedUser {
+export function parseMovieReservationClaims(claims: JwtClaims): AuthenticatedUser {
   const userId = readRequiredStringClaim(claims, 'sub');
   const movieProviderId = readRequiredStringClaim(claims, 'movie_provider_id');
-  const movieProviderCode = readOptionalMovieProviderCodeClaim(
-    claims,
-    'movie_provider_code',
-  );
+  const movieProviderCode = readOptionalMovieProviderCodeClaim(claims, 'movie_provider_code');
   const username =
-    readOptionalStringClaim(claims, 'preferred_username') ??
-    readOptionalStringClaim(claims, 'name') ??
-    userId;
+    readOptionalStringClaim(claims, 'preferred_username') ?? readOptionalStringClaim(claims, 'name') ?? userId;
   const email = readOptionalStringClaim(claims, 'email') ?? '';
 
   return {
@@ -52,10 +45,7 @@ function createRequiredMovieProviderIdClaim(value: string) {
 /**
  * Reads an optional provider code claim used only for display and logging.
  */
-function readOptionalMovieProviderCodeClaim(
-  claims: JwtClaims,
-  name: string,
-): string | undefined {
+function readOptionalMovieProviderCodeClaim(claims: JwtClaims, name: string): string | undefined {
   const value = readOptionalStringClaim(claims, name);
 
   if (value === undefined) {
@@ -87,10 +77,7 @@ function readRequiredStringClaim(claims: JwtClaims, name: string): string {
 /**
  * Reads an optional string claim, ignoring non-string claim values.
  */
-function readOptionalStringClaim(
-  claims: JwtClaims,
-  name: string,
-): string | undefined {
+function readOptionalStringClaim(claims: JwtClaims, name: string): string | undefined {
   const value = claims[name];
   return typeof value === 'string' ? value : undefined;
 }

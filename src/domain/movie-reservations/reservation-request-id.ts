@@ -12,8 +12,6 @@ export type ReservationRequestId = string & {
   readonly [reservationRequestIdBrand]: 'ReservationRequestId';
 };
 
-export function createReservationRequestId(
-  value: string,
-): ReservationRequestId {
+export function createReservationRequestId(value: string): ReservationRequestId {
   return createUuidId<ReservationRequestId>(value, 'ReservationRequestId');
 }

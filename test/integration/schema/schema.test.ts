@@ -45,13 +45,9 @@ describe('generated GraphQL schema', () => {
     expect(schema).toMatch(
       /reservationResult\(\s+"""[\s\S]*?Returns null until the request is confirmed\.[\s\S]*?"""\s+requestId: ID!\s+\): Reservation/,
     );
-    expect(schema).not.toContain(
-      'reservationRequestById(id: ID!): ReservationRequest',
-    );
+    expect(schema).not.toContain('reservationRequestById(id: ID!): ReservationRequest');
     expect(schema).not.toContain('confirmedReservation(id: ID!): Reservation');
-    expect(schema).toContain(
-      'Polls the status of a reservation request created by requestReservation.',
-    );
+    expect(schema).toContain('Polls the status of a reservation request created by requestReservation.');
     expect(schema).toContain('Intent-driven command to reserve seats.');
     expect(schema).toContain('type Movie');
     expect(schema).toContain('type Screening');

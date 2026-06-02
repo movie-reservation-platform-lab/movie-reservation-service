@@ -126,9 +126,7 @@ export class PostgresReservationRequestStateStore {
   async findReservationRequestProcessingAttemptsByRequestId(
     reservationRequestId: ReservationRequestId,
   ): Promise<readonly ReservationRequestProcessingAttempt[]> {
-    const rows = await this.database<ReservationRequestProcessingAttemptRow>(
-      'reservation_request_processing_attempts',
-    )
+    const rows = await this.database<ReservationRequestProcessingAttemptRow>('reservation_request_processing_attempts')
       .where({ reservation_request_id: reservationRequestId })
       .orderBy('id', 'asc');
 
@@ -144,18 +142,16 @@ export class PostgresReservationRequestStateStore {
     row: ReservationRequestRow,
     failedAt: string,
   ): Promise<void> {
-    await trx<ReservationRequestRow>('reservation_requests')
-      .where({ id: row.id })
-      .update({
-        status: ReservationRequestStatus.FAILED,
-        claimed_by: null,
-        claim_token: null,
-        claimed_at: null,
-        claim_expires_at: null,
-        last_heartbeat_at: null,
-        processed_at: failedAt,
-        updated_at: failedAt,
-      });
+    await trx<ReservationRequestRow>('reservation_requests').where({ id: row.id }).update({
+      status: ReservationRequestStatus.FAILED,
+      claimed_by: null,
+      claim_token: null,
+      claimed_at: null,
+      claim_expires_at: null,
+      last_heartbeat_at: null,
+      processed_at: failedAt,
+      updated_at: failedAt,
+    });
     await this.insertProcessingAttempt(trx, {
       reservationRequestId: createReservationRequestId(row.id),
       sequence: toReservationRequestSequence(row.sequence),
@@ -182,31 +178,22 @@ export class PostgresReservationRequestStateStore {
       .first();
 
     if (row === undefined) {
-      throw new Error(
-        `Claimed reservation request ${claimedWorkItem.reservationRequest.id} was not found`,
-      );
+      throw new Error(`Claimed reservation request ${claimedWorkItem.reservationRequest.id} was not found`);
     }
 
     const storedSequence = toReservationRequestSequence(row.sequence);
 
     if (storedSequence !== claimedWorkItem.sequence) {
-      throw new Error(
-        `Claimed reservation request ${claimedWorkItem.reservationRequest.id} sequence changed`,
-      );
+      throw new Error(`Claimed reservation request ${claimedWorkItem.reservationRequest.id} sequence changed`);
     }
 
     const processingStatus: string = ReservationRequestStatus.PROCESSING;
 
     if (row.status !== processingStatus) {
-      throw new Error(
-        `Claimed reservation request ${row.id} is ${row.status}, not PROCESSING`,
-      );
+      throw new Error(`Claimed reservation request ${row.id} is ${row.status}, not PROCESSING`);
     }
 
-    if (
-      row.claimed_by !== claimedWorkItem.claimedBy ||
-      row.claim_token !== claimedWorkItem.claimToken
-    ) {
+    if (row.claimed_by !== claimedWorkItem.claimedBy || row.claim_token !== claimedWorkItem.claimToken) {
       throw new Error(`Claimed reservation request ${row.id} claim was lost`);
     }
 
@@ -225,8 +212,7 @@ export class PostgresReservationRequestStateStore {
     status: ClaimedRequestTargetStatus,
     options: { readonly incrementTransientFailureCount?: boolean } = {},
   ): Promise<ReservationRequest> {
-    const terminalTimestamp =
-      status === ReservationRequestStatus.REQUESTED ? null : trx.fn.now();
+    const terminalTimestamp = status === ReservationRequestStatus.REQUESTED ? null : trx.fn.now();
     const updatedRows = await trx<ReservationRequestRow>('reservation_requests')
       .where({ id: claimedWorkItem.reservationRequest.id })
       .update({
@@ -248,10 +234,7 @@ export class PostgresReservationRequestStateStore {
       `Reservation request ${claimedWorkItem.reservationRequest.id} was not updated`,
     );
 
-    return toReservationRequest(
-      updatedRow,
-      await findReservationRequestSeatIds(trx, updatedRow.id),
-    );
+    return toReservationRequest(updatedRow, await findReservationRequestSeatIds(trx, updatedRow.id));
   }
 
   /**
@@ -269,12 +252,8 @@ export class PostgresReservationRequestStateStore {
       completed_at: attempt.completedAt,
       outcome: attempt.outcome,
       reason: readAttemptReason(attempt),
-      reservation_id:
-        attempt.outcome === 'confirmed' ? attempt.reservationId : null,
-      conflicting_reservation_id:
-        attempt.outcome === 'rejected'
-          ? attempt.conflictingReservationId
-          : null,
+      reservation_id: attempt.outcome === 'confirmed' ? attempt.reservationId : null,
+      conflicting_reservation_id: attempt.outcome === 'rejected' ? attempt.conflictingReservationId : null,
     });
   }
 }
@@ -282,9 +261,7 @@ export class PostgresReservationRequestStateStore {
 /**
  * Extracts the nullable database `reason` value from the discriminated attempt.
  */
-function readAttemptReason(
-  attempt: ReservationRequestProcessingAttempt,
-): string | null {
+function readAttemptReason(attempt: ReservationRequestProcessingAttempt): string | null {
   if (attempt.outcome === 'confirmed') {
     return null;
   }

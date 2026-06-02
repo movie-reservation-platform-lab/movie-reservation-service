@@ -10,9 +10,7 @@ import type { AuthenticatedUser } from '../../domain/authentication/authenticate
  */
 export interface GraphqlHttpRequest {
   readonly method?: string;
-  readonly headers: Readonly<
-    Record<string, string | readonly string[] | undefined>
-  >;
+  readonly headers: Readonly<Record<string, string | readonly string[] | undefined>>;
   authenticatedUser?: AuthenticatedUser;
   actor?: ActorContext;
 }

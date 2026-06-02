@@ -23,9 +23,7 @@ describe('InMemoryMovieReservationRepository', () => {
     const repository = InMemoryMovieReservationRepository.withSeedData();
 
     await expect(
-      repository.findMovieProviderById(
-        createMovieProviderId('11111111-1111-4111-8111-111111111111'),
-      ),
+      repository.findMovieProviderById(createMovieProviderId('11111111-1111-4111-8111-111111111111')),
     ).resolves.toMatchObject({ name: 'Aurora Cinema Group' });
 
     const auroraMovies = await repository.findMoviesByProviderId(
@@ -75,15 +73,10 @@ describe('InMemoryMovieReservationRepository', () => {
     const repository = InMemoryMovieReservationRepository.withSeedData();
 
     await expect(
-      repository.findReservationRequestById(
-        createReservationRequestId('77777777-7777-4777-8777-777777777771'),
-      ),
+      repository.findReservationRequestById(createReservationRequestId('77777777-7777-4777-8777-777777777771')),
     ).resolves.toMatchObject({
       movieProviderId: '11111111-1111-4111-8111-111111111111',
-      seatIds: [
-        '66666666-6666-4666-8666-666666666661',
-        '66666666-6666-4666-8666-666666666662',
-      ],
+      seatIds: ['66666666-6666-4666-8666-666666666661', '66666666-6666-4666-8666-666666666662'],
       status: ReservationRequestStatus.CONFIRMED,
     });
   });
@@ -94,33 +87,21 @@ describe('InMemoryMovieReservationRepository', () => {
     await expect(
       repository.saveReservationRequest(
         createReservationRequest({
-          id: createReservationRequestId(
-            '77777777-7777-4777-8777-777777777771',
-          ),
-          movieProviderId: createMovieProviderId(
-            '11111111-1111-4111-8111-111111111111',
-          ),
-          screeningId: createScreeningId(
-            '55555555-5555-4555-8555-555555555551',
-          ),
+          id: createReservationRequestId('77777777-7777-4777-8777-777777777771'),
+          movieProviderId: createMovieProviderId('11111111-1111-4111-8111-111111111111'),
+          screeningId: createScreeningId('55555555-5555-4555-8555-555555555551'),
           seatIds: [createSeatId('66666666-6666-4666-8666-666666666663')],
           requestedByUserId: createUserId('local-dev-user'),
         }),
       ),
-    ).rejects.toThrow(
-      'Reservation request 77777777-7777-4777-8777-777777777771 already exists',
-    );
+    ).rejects.toThrow('Reservation request 77777777-7777-4777-8777-777777777771 already exists');
   });
 
   it('returns reservations by id so application authorization can make the access decision', async () => {
     const repository = InMemoryMovieReservationRepository.withSeedData();
-    const reservationId = createReservationId(
-      '88888888-8888-4888-8888-888888888881',
-    );
+    const reservationId = createReservationId('88888888-8888-4888-8888-888888888881');
 
-    await expect(
-      repository.findReservationById(reservationId),
-    ).resolves.toMatchObject({
+    await expect(repository.findReservationById(reservationId)).resolves.toMatchObject({
       movieProviderId: '11111111-1111-4111-8111-111111111111',
       reservedByUserId: 'user-ada',
     });
@@ -128,13 +109,9 @@ describe('InMemoryMovieReservationRepository', () => {
 
   it('returns reservations by reservation request id for result lookups', async () => {
     const repository = InMemoryMovieReservationRepository.withSeedData();
-    const reservationRequestId = createReservationRequestId(
-      '77777777-7777-4777-8777-777777777771',
-    );
+    const reservationRequestId = createReservationRequestId('77777777-7777-4777-8777-777777777771');
 
-    await expect(
-      repository.findReservationByReservationRequestId(reservationRequestId),
-    ).resolves.toMatchObject({
+    await expect(repository.findReservationByReservationRequestId(reservationRequestId)).resolves.toMatchObject({
       id: '88888888-8888-4888-8888-888888888881',
       movieProviderId: '11111111-1111-4111-8111-111111111111',
       reservationRequestId: '77777777-7777-4777-8777-777777777771',
@@ -146,10 +123,7 @@ describe('InMemoryReservationRequestWorkRepository', () => {
   it('atomically claims the lowest-sequence pending request and skips terminal requests', async () => {
     const terminalRequest = confirmReservationRequest(
       startProcessingReservationRequest(
-        createTestReservationRequest(
-          '99999999-9999-4999-8999-999999999918',
-          '99999999-9999-4999-8999-999999999903',
-        ),
+        createTestReservationRequest('99999999-9999-4999-8999-999999999918', '99999999-9999-4999-8999-999999999903'),
       ),
     );
     const nextPendingRequest = createTestReservationRequest(
@@ -166,21 +140,13 @@ describe('InMemoryReservationRequestWorkRepository', () => {
       movies: [],
       screenings: [],
       seats: [],
-      reservationRequests: [
-        terminalRequest,
-        nextPendingRequest,
-        laterPendingRequest,
-      ],
+      reservationRequests: [terminalRequest, nextPendingRequest, laterPendingRequest],
       reservations: [],
     });
     const workRepository = new InMemoryReservationRequestWorkRepository(store);
 
-    const firstClaim = await workRepository.claimNextPendingReservationRequest(
-      createClaimInput('claim-1'),
-    );
-    const secondClaim = await workRepository.claimNextPendingReservationRequest(
-      createClaimInput('claim-2'),
-    );
+    const firstClaim = await workRepository.claimNextPendingReservationRequest(createClaimInput('claim-1'));
+    const secondClaim = await workRepository.claimNextPendingReservationRequest(createClaimInput('claim-2'));
 
     expect(firstClaim).toMatchObject({
       reservationRequest: {
@@ -234,10 +200,9 @@ describe('InMemoryReservationRequestWorkRepository', () => {
       ),
     ).resolves.toBeNull();
 
-    const reclaimedClaim =
-      await workRepository.claimNextPendingReservationRequest(
-        createClaimInput('claim-after-expiry', '2026-06-01T08:59:41.000Z'),
-      );
+    const reclaimedClaim = await workRepository.claimNextPendingReservationRequest(
+      createClaimInput('claim-after-expiry', '2026-06-01T08:59:41.000Z'),
+    );
 
     expect(reclaimedClaim).toMatchObject({
       reservationRequest: {
@@ -278,13 +243,9 @@ describe('InMemoryReservationRequestWorkRepository', () => {
 
     await expect(
       workRepository.claimNextPendingReservationRequest(
-        createClaimInput(
-          'claim-after-first-timeout',
-          '2026-06-01T08:59:31.000Z',
-          {
-            maxLeaseTimeouts: 1,
-          },
-        ),
+        createClaimInput('claim-after-first-timeout', '2026-06-01T08:59:31.000Z', {
+          maxLeaseTimeouts: 1,
+        }),
       ),
     ).resolves.toMatchObject({
       leaseTimeoutCount: 1,
@@ -292,17 +253,11 @@ describe('InMemoryReservationRequestWorkRepository', () => {
     });
     await expect(
       workRepository.claimNextPendingReservationRequest(
-        createClaimInput(
-          'claim-after-second-timeout',
-          '2026-06-01T09:00:02.000Z',
-          { maxLeaseTimeouts: 1 },
-        ),
+        createClaimInput('claim-after-second-timeout', '2026-06-01T09:00:02.000Z', { maxLeaseTimeouts: 1 }),
       ),
     ).resolves.toBeNull();
     await expect(
-      repository.findReservationRequestById(
-        createReservationRequestId('99999999-9999-4999-8999-999999999927'),
-      ),
+      repository.findReservationRequestById(createReservationRequestId('99999999-9999-4999-8999-999999999927')),
     ).resolves.toMatchObject({
       status: ReservationRequestStatus.FAILED,
     });
@@ -334,10 +289,7 @@ describe('InMemoryReservationRequestWorkRepository', () => {
     });
     const repository = new InMemoryMovieReservationRepository(store);
     const workRepository = new InMemoryReservationRequestWorkRepository(store);
-    const claimedWorkItem =
-      await workRepository.claimNextPendingReservationRequest(
-        createClaimInput('claim-confirm'),
-      );
+    const claimedWorkItem = await workRepository.claimNextPendingReservationRequest(createClaimInput('claim-confirm'));
 
     if (claimedWorkItem === null) {
       throw new Error('Expected pending request to be claimed');
@@ -374,16 +326,12 @@ describe('InMemoryReservationRequestWorkRepository', () => {
       },
     });
     await expect(
-      repository.findReservationRequestById(
-        createReservationRequestId('99999999-9999-4999-8999-999999999920'),
-      ),
+      repository.findReservationRequestById(createReservationRequestId('99999999-9999-4999-8999-999999999920')),
     ).resolves.toMatchObject({
       status: ReservationRequestStatus.CONFIRMED,
     });
     await expect(
-      repository.findReservationById(
-        createReservationId('99999999-9999-4999-8999-999999999921'),
-      ),
+      repository.findReservationById(createReservationId('99999999-9999-4999-8999-999999999921')),
     ).resolves.toMatchObject({
       reservationRequestId: '99999999-9999-4999-8999-999999999920',
       seatIds: ['99999999-9999-4999-8999-999999999903'],
@@ -404,9 +352,7 @@ describe('InMemoryReservationRequestWorkRepository', () => {
 function createTestReservationRequest(id: string, seatId: string) {
   return createReservationRequest({
     id: createReservationRequestId(id),
-    movieProviderId: createMovieProviderId(
-      '99999999-9999-4999-8999-999999999901',
-    ),
+    movieProviderId: createMovieProviderId('99999999-9999-4999-8999-999999999901'),
     screeningId: createScreeningId('99999999-9999-4999-8999-999999999902'),
     seatIds: [createSeatId(seatId)],
     requestedByUserId: createUserId('user-1'),

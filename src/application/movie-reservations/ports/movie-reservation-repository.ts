@@ -27,24 +27,17 @@ export interface MovieReservationRepository {
   /**
    * Finds the movie provider that owns a tenant-scoped catalog.
    */
-  findMovieProviderById(
-    movieProviderId: MovieProviderId,
-  ): Promise<MovieProvider | null>;
+  findMovieProviderById(movieProviderId: MovieProviderId): Promise<MovieProvider | null>;
 
   /**
    * Lists movies visible inside one movie provider boundary.
    */
-  findMoviesByProviderId(
-    movieProviderId: MovieProviderId,
-  ): Promise<readonly Movie[]>;
+  findMoviesByProviderId(movieProviderId: MovieProviderId): Promise<readonly Movie[]>;
 
   /**
    * Finds one movie only when it belongs to the requested provider.
    */
-  findMovieById(
-    movieProviderId: MovieProviderId,
-    movieId: MovieId,
-  ): Promise<Movie | null>;
+  findMovieById(movieProviderId: MovieProviderId, movieId: MovieId): Promise<Movie | null>;
 
   /**
    * Lists scheduled screenings visible inside one movie provider boundary.
@@ -57,18 +50,12 @@ export interface MovieReservationRepository {
   /**
    * Finds one screening only when it belongs to the requested provider.
    */
-  findScreeningForProvider(
-    movieProviderId: MovieProviderId,
-    screeningId: ScreeningId,
-  ): Promise<Screening | null>;
+  findScreeningForProvider(movieProviderId: MovieProviderId, screeningId: ScreeningId): Promise<Screening | null>;
 
   /**
    * Lists seats for the auditorium used by a provider-owned screening.
    */
-  findSeatsByScreeningId(
-    movieProviderId: MovieProviderId,
-    screeningId: ScreeningId,
-  ): Promise<readonly Seat[]>;
+  findSeatsByScreeningId(movieProviderId: MovieProviderId, screeningId: ScreeningId): Promise<readonly Seat[]>;
 
   /**
    * Batch-loads auditorium seats for provider-owned screenings.
@@ -91,9 +78,7 @@ export interface MovieReservationRepository {
   /**
    * Reads the reservation request status object by id.
    */
-  findReservationRequestById(
-    reservationRequestId: ReservationRequestId,
-  ): Promise<ReservationRequest | null>;
+  findReservationRequestById(reservationRequestId: ReservationRequestId): Promise<ReservationRequest | null>;
 
   /**
    * Persists a newly requested reservation request.
@@ -103,14 +88,10 @@ export interface MovieReservationRepository {
   /**
    * Reads a confirmed reservation by reservation id.
    */
-  findReservationById(
-    reservationId: ReservationId,
-  ): Promise<Reservation | null>;
+  findReservationById(reservationId: ReservationId): Promise<Reservation | null>;
 
   /**
    * Reads the confirmed reservation produced by a reservation request.
    */
-  findReservationByReservationRequestId(
-    reservationRequestId: ReservationRequestId,
-  ): Promise<Reservation | null>;
+  findReservationByReservationRequestId(reservationRequestId: ReservationRequestId): Promise<Reservation | null>;
 }

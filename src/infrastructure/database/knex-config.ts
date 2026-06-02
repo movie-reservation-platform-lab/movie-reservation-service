@@ -10,9 +10,7 @@ export interface PostgresConnectionSettings {
   readonly poolMax: number;
 }
 
-export function createPostgresConnectionSettings(
-  config: Config,
-): PostgresConnectionSettings {
+export function createPostgresConnectionSettings(config: Config): PostgresConnectionSettings {
   if (config.DATABASE_URL === undefined) {
     throw new Error('DATABASE_URL is required for Postgres persistence');
   }
@@ -24,9 +22,7 @@ export function createPostgresConnectionSettings(
   };
 }
 
-export function createKnexConfig(
-  settings: PostgresConnectionSettings,
-): Knex.Config {
+export function createKnexConfig(settings: PostgresConnectionSettings): Knex.Config {
   return {
     client: 'pg',
     connection: settings.databaseUrl,

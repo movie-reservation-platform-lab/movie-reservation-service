@@ -8,16 +8,13 @@ registerEnumType(ReservationRequestStatus, {
     'Lifecycle status for an asynchronous reservation request. Clients poll this status after requestReservation.',
   valuesMap: {
     REQUESTED: {
-      description:
-        'The API accepted the request and it is waiting for processing.',
+      description: 'The API accepted the request and it is waiting for processing.',
     },
     PROCESSING: {
-      description:
-        'The internal processor claimed the request and is working on it.',
+      description: 'The internal processor claimed the request and is working on it.',
     },
     CONFIRMED: {
-      description:
-        'The request succeeded and produced a confirmed reservation.',
+      description: 'The request succeeded and produced a confirmed reservation.',
     },
     REJECTED: {
       description:

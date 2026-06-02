@@ -7,10 +7,7 @@ import type { AuthMode } from '../../config';
 import { JwtAuthenticationManager } from '../../infrastructure/authentication/jwt-authentication.manager';
 import { LocalFixedUserAuthenticationManager } from '../../infrastructure/authentication/local-fixed-user-authentication.manager';
 import { LocalJwtTokenValidationClient } from '../../infrastructure/authentication/local-jwt-token-validation.client';
-import {
-  AUTHENTICATION_MANAGER,
-  TOKEN_VALIDATION_CLIENT,
-} from './movie-reservation.tokens';
+import { AUTHENTICATION_MANAGER, TOKEN_VALIDATION_CLIENT } from './movie-reservation.tokens';
 
 /**
  * Select the authentication adapter for the configured runtime profile.
@@ -20,8 +17,7 @@ export function createAuthenticationProviders(authMode: AuthMode): Provider[] {
     return [
       {
         provide: AUTHENTICATION_MANAGER,
-        useFactory: (): AuthenticationManager =>
-          new LocalFixedUserAuthenticationManager(),
+        useFactory: (): AuthenticationManager => new LocalFixedUserAuthenticationManager(),
       },
       createAuthenticationServiceProvider(),
     ];
@@ -31,14 +27,11 @@ export function createAuthenticationProviders(authMode: AuthMode): Provider[] {
     return [
       {
         provide: TOKEN_VALIDATION_CLIENT,
-        useFactory: (): TokenValidationClient =>
-          new LocalJwtTokenValidationClient(),
+        useFactory: (): TokenValidationClient => new LocalJwtTokenValidationClient(),
       },
       {
         provide: AUTHENTICATION_MANAGER,
-        useFactory: (
-          tokenValidationClient: TokenValidationClient,
-        ): AuthenticationManager =>
+        useFactory: (tokenValidationClient: TokenValidationClient): AuthenticationManager =>
           new JwtAuthenticationManager(tokenValidationClient),
         inject: [TOKEN_VALIDATION_CLIENT],
       },
@@ -55,9 +48,7 @@ export function createAuthenticationProviders(authMode: AuthMode): Provider[] {
 function createAuthenticationServiceProvider(): Provider {
   return {
     provide: AuthenticationService,
-    useFactory: (
-      authenticationManager: AuthenticationManager,
-    ): AuthenticationService =>
+    useFactory: (authenticationManager: AuthenticationManager): AuthenticationService =>
       new AuthenticationService(authenticationManager),
     inject: [AUTHENTICATION_MANAGER],
   };

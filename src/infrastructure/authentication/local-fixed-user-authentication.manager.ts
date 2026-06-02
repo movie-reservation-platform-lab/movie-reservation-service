@@ -17,9 +17,7 @@ export class LocalFixedUserAuthenticationManager implements AuthenticationManage
       userId: createUserId('local-dev-user'),
       username: 'local-dev-admin',
       email: 'local-dev@example.test',
-      movieProviderId: createMovieProviderId(
-        MOVIE_RESERVATION_DEMO_IDS.providers.aurora,
-      ),
+      movieProviderId: createMovieProviderId(MOVIE_RESERVATION_DEMO_IDS.providers.aurora),
       movieProviderCode: MOVIE_RESERVATION_DEMO_IDS.providerCodes.aurora,
       roles: [UserRole.TENANT_ADMIN],
       scopes: ['reservations:read:tenant'],

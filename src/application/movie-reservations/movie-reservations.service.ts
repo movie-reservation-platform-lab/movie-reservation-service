@@ -2,10 +2,7 @@ import type { ActorContext } from '../authentication/actor-context';
 import type { AuthorizationService } from '../authorization/authorization.service';
 import type { Movie } from '../../domain/movie-reservations/movie';
 import type { MovieId } from '../../domain/movie-reservations/movie-id';
-import {
-  createReservationRequest,
-  type ReservationRequest,
-} from '../../domain/movie-reservations/reservation-request';
+import { createReservationRequest, type ReservationRequest } from '../../domain/movie-reservations/reservation-request';
 import type { ReservationRequestId } from '../../domain/movie-reservations/reservation-request-id';
 import type { Reservation } from '../../domain/movie-reservations/reservation';
 import type { ReservationId } from '../../domain/movie-reservations/reservation-id';
@@ -55,27 +52,15 @@ export class MovieReservationsService {
   /**
    * List provider-scoped screenings, optionally narrowed to one movie.
    */
-  async listScreenings(
-    actor: ActorContext,
-    input: { readonly movieId?: MovieId } = {},
-  ): Promise<readonly Screening[]> {
-    return this.repository.findScreeningsByProviderId(
-      actor.movieProviderId,
-      input,
-    );
+  async listScreenings(actor: ActorContext, input: { readonly movieId?: MovieId } = {}): Promise<readonly Screening[]> {
+    return this.repository.findScreeningsByProviderId(actor.movieProviderId, input);
   }
 
   /**
    * List auditorium seats for a provider-owned screening.
    */
-  async listSeatsForScreening(
-    actor: ActorContext,
-    screeningId: ScreeningId,
-  ): Promise<readonly Seat[]> {
-    return this.repository.findSeatsByScreeningId(
-      actor.movieProviderId,
-      screeningId,
-    );
+  async listSeatsForScreening(actor: ActorContext, screeningId: ScreeningId): Promise<readonly Seat[]> {
+    return this.repository.findSeatsByScreeningId(actor.movieProviderId, screeningId);
   }
 
   /**
@@ -85,23 +70,14 @@ export class MovieReservationsService {
     actor: ActorContext,
     screeningIds: readonly ScreeningId[],
   ): Promise<ReadonlyMap<ScreeningId, readonly Seat[]>> {
-    return this.repository.findSeatsByScreeningIds(
-      actor.movieProviderId,
-      screeningIds,
-    );
+    return this.repository.findSeatsByScreeningIds(actor.movieProviderId, screeningIds);
   }
 
   /**
    * Create a REQUESTED reservation request and returns before processing.
    */
-  async requestReservation(
-    actor: ActorContext,
-    input: RequestReservationInput,
-  ): Promise<ReservationRequest> {
-    const screening = await this.repository.findScreeningForProvider(
-      actor.movieProviderId,
-      input.screeningId,
-    );
+  async requestReservation(actor: ActorContext, input: RequestReservationInput): Promise<ReservationRequest> {
+    const screening = await this.repository.findScreeningForProvider(actor.movieProviderId, input.screeningId);
 
     if (screening === null) {
       throw new Error(`Screening ${input.screeningId} was not found`);
@@ -132,19 +108,13 @@ export class MovieReservationsService {
     actor: ActorContext,
     reservationRequestId: ReservationRequestId,
   ): Promise<ReservationRequest | null> {
-    const reservationRequest =
-      await this.repository.findReservationRequestById(reservationRequestId);
+    const reservationRequest = await this.repository.findReservationRequestById(reservationRequestId);
 
     if (reservationRequest === null) {
       return null;
     }
 
-    if (
-      !this.authorizationService.canReadReservationRequest(
-        actor,
-        reservationRequest,
-      )
-    ) {
+    if (!this.authorizationService.canReadReservationRequest(actor, reservationRequest)) {
       return null;
     }
 
@@ -154,12 +124,8 @@ export class MovieReservationsService {
   /**
    * Read a confirmed reservation by id when the actor is authorized.
    */
-  async getReservation(
-    actor: ActorContext,
-    reservationId: ReservationId,
-  ): Promise<Reservation | null> {
-    const reservation =
-      await this.repository.findReservationById(reservationId);
+  async getReservation(actor: ActorContext, reservationId: ReservationId): Promise<Reservation | null> {
+    const reservation = await this.repository.findReservationById(reservationId);
 
     if (reservation === null) {
       return null;
@@ -182,10 +148,7 @@ export class MovieReservationsService {
     actor: ActorContext,
     reservationRequestId: ReservationRequestId,
   ): Promise<Reservation | null> {
-    const reservation =
-      await this.repository.findReservationByReservationRequestId(
-        reservationRequestId,
-      );
+    const reservation = await this.repository.findReservationByReservationRequestId(reservationRequestId);
 
     if (reservation === null) {
       return null;
@@ -203,10 +166,7 @@ export class MovieReservationsService {
    *
    * @throws {Error} when the seat doesn't belong to the given screening
    */
-  private async assertSeatsBelongToScreening(
-    actor: ActorContext,
-    input: RequestReservationInput,
-  ): Promise<void> {
+  private async assertSeatsBelongToScreening(actor: ActorContext, input: RequestReservationInput): Promise<void> {
     const seats = await this.repository.findSeatsByIdsForScreening(
       actor.movieProviderId,
       input.screeningId,
@@ -216,9 +176,7 @@ export class MovieReservationsService {
 
     for (const seatId of input.seatIds) {
       if (!availableSeatIds.has(seatId)) {
-        throw new Error(
-          `Seat ${seatId} is not available for screening ${input.screeningId}`,
-        );
+        throw new Error(`Seat ${seatId} is not available for screening ${input.screeningId}`);
       }
     }
   }

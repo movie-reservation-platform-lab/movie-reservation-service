@@ -38,11 +38,7 @@ describe('Postgres-backed movie reservation workflow', () => {
     process.env.DATABASE_POOL_MAX = '5';
     process.env.RESERVATION_WORKER_MODE = 'disabled';
 
-    const [
-      { createApp },
-      { createKnexConfig },
-      { seedLocalMovieReservationCatalog },
-    ] = await Promise.all([
+    const [{ createApp }, { createKnexConfig }, { seedLocalMovieReservationCatalog }] = await Promise.all([
       import('../../src/app.js'),
       import('../../src/infrastructure/database/knex-config.js'),
       import('../../src/infrastructure/database/seed-local.js'),
@@ -72,8 +68,7 @@ describe('Postgres-backed movie reservation workflow', () => {
   }, 120_000);
 
   beforeEach(async () => {
-    const { seedLocalMovieReservationCatalog } =
-      await import('../../src/infrastructure/database/seed-local.js');
+    const { seedLocalMovieReservationCatalog } = await import('../../src/infrastructure/database/seed-local.js');
     await resetDatabase(database);
     await database.migrate.latest();
     await seedLocalMovieReservationCatalog(database);
@@ -131,29 +126,19 @@ describe('Postgres-backed movie reservation workflow', () => {
    *   duplicate-request error.
    */
   it('maps duplicate reservation request ids to the application error', async () => {
-    const repository = app.get<MovieReservationRepository>(
-      MOVIE_RESERVATION_REPOSITORY,
-    );
+    const repository = app.get<MovieReservationRepository>(MOVIE_RESERVATION_REPOSITORY);
     const duplicateReservationRequest = createReservationRequest({
-      id: createReservationRequestId(
-        MOVIE_RESERVATION_DEMO_IDS.reservationRequests.auroraAda,
-      ),
-      movieProviderId: createMovieProviderId(
-        MOVIE_RESERVATION_DEMO_IDS.providers.aurora,
-      ),
-      screeningId: createScreeningId(
-        MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
-      ),
+      id: createReservationRequestId(MOVIE_RESERVATION_DEMO_IDS.reservationRequests.auroraAda),
+      movieProviderId: createMovieProviderId(MOVIE_RESERVATION_DEMO_IDS.providers.aurora),
+      screeningId: createScreeningId(MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning),
       seatIds: [createSeatId(MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3)],
       requestedByUserId: createUserId('local-dev-user'),
     });
 
-    await expect(
-      repository.saveReservationRequest(duplicateReservationRequest),
-    ).rejects.toThrow(ReservationRequestAlreadyExistsError);
-    await expect(
-      repository.saveReservationRequest(duplicateReservationRequest),
-    ).rejects.toThrow(
+    await expect(repository.saveReservationRequest(duplicateReservationRequest)).rejects.toThrow(
+      ReservationRequestAlreadyExistsError,
+    );
+    await expect(repository.saveReservationRequest(duplicateReservationRequest)).rejects.toThrow(
       `Reservation request ${MOVIE_RESERVATION_DEMO_IDS.reservationRequests.auroraAda} already exists`,
     );
   });
@@ -167,13 +152,9 @@ describe('Postgres-backed movie reservation workflow', () => {
    * - Reads the request status and final reservation back through GraphQL.
    */
   it('creates, processes, and reads a confirmed reservation', async () => {
-    const reservationRequest = await requestReservation([
-      MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3,
-    ]);
+    const reservationRequest = await requestReservation([MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3]);
 
-    const processor = app.get<ReservationRequestProcessor>(
-      RESERVATION_REQUEST_PROCESSOR,
-    );
+    const processor = app.get<ReservationRequestProcessor>(RESERVATION_REQUEST_PROCESSOR);
     await expect(processor.processNextPendingRequest()).resolves.toMatchObject({
       outcome: 'confirmed',
       reservationRequest: {
@@ -182,18 +163,13 @@ describe('Postgres-backed movie reservation workflow', () => {
       },
     });
 
-    await expect(
-      readReservationRequestStatus(reservationRequest.id),
-    ).resolves.toMatchObject({
+    await expect(readReservationRequestStatus(reservationRequest.id)).resolves.toMatchObject({
       id: reservationRequest.id,
       status: 'CONFIRMED',
     });
-    await expect(
-      readReservationResult(reservationRequest.id),
-    ).resolves.toMatchObject({
+    await expect(readReservationResult(reservationRequest.id)).resolves.toMatchObject({
       reservationRequestId: reservationRequest.id,
-      screeningId:
-        MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
+      screeningId: MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
       seatIds: [MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3],
       reservedByUserId: 'local-dev-user',
     });
@@ -207,15 +183,9 @@ describe('Postgres-backed movie reservation workflow', () => {
    *   conflict rejection.
    */
   it('rejects the second request for an already confirmed seat', async () => {
-    const firstRequest = await requestReservation([
-      MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3,
-    ]);
-    const secondRequest = await requestReservation([
-      MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3,
-    ]);
-    const processor = app.get<ReservationRequestProcessor>(
-      RESERVATION_REQUEST_PROCESSOR,
-    );
+    const firstRequest = await requestReservation([MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3]);
+    const secondRequest = await requestReservation([MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3]);
+    const processor = app.get<ReservationRequestProcessor>(RESERVATION_REQUEST_PROCESSOR);
 
     await expect(processor.processNextPendingRequest()).resolves.toMatchObject({
       outcome: 'confirmed',
@@ -233,14 +203,10 @@ describe('Postgres-backed movie reservation workflow', () => {
       },
     });
 
-    await expect(
-      readReservationRequestStatus(firstRequest.id),
-    ).resolves.toMatchObject({
+    await expect(readReservationRequestStatus(firstRequest.id)).resolves.toMatchObject({
       status: 'CONFIRMED',
     });
-    await expect(
-      readReservationRequestStatus(secondRequest.id),
-    ).resolves.toMatchObject({
+    await expect(readReservationRequestStatus(secondRequest.id)).resolves.toMatchObject({
       status: 'REJECTED',
     });
   });
@@ -255,15 +221,9 @@ describe('Postgres-backed movie reservation workflow', () => {
   it('maps a database confirmed-seat unique race to a rejected request', async () => {
     await requestReservation([MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3]);
     await requestReservation([MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3]);
-    const workRepository = app.get<ReservationRequestWorkRepository>(
-      RESERVATION_REQUEST_WORK_REPOSITORY,
-    );
-    const firstClaim = await workRepository.claimNextPendingReservationRequest(
-      createClaimInput('claim-one'),
-    );
-    const secondClaim = await workRepository.claimNextPendingReservationRequest(
-      createClaimInput('claim-two'),
-    );
+    const workRepository = app.get<ReservationRequestWorkRepository>(RESERVATION_REQUEST_WORK_REPOSITORY);
+    const firstClaim = await workRepository.claimNextPendingReservationRequest(createClaimInput('claim-one'));
+    const secondClaim = await workRepository.claimNextPendingReservationRequest(createClaimInput('claim-two'));
 
     if (firstClaim === null || secondClaim === null) {
       throw new Error('Expected both reservation requests to be claimed');
@@ -343,12 +303,8 @@ describe('Postgres-backed movie reservation workflow', () => {
    *   changes, not the transient-failure counter.
    */
   it('reclaims expired processing work without consuming transient failure budget', async () => {
-    const reservationRequest = await requestReservation([
-      MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3,
-    ]);
-    const workRepository = app.get<ReservationRequestWorkRepository>(
-      RESERVATION_REQUEST_WORK_REPOSITORY,
-    );
+    const reservationRequest = await requestReservation([MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3]);
+    const workRepository = app.get<ReservationRequestWorkRepository>(RESERVATION_REQUEST_WORK_REPOSITORY);
     const firstClaim = await workRepository.claimNextPendingReservationRequest(
       createClaimInput('claim-before-timeout', '2026-06-01T08:59:00.000Z'),
     );
@@ -406,11 +362,9 @@ describe('Postgres-backed movie reservation workflow', () => {
   it('enforces that requested seats belong to the request screening auditorium', async () => {
     await expect(
       database('reservation_request_seats').insert({
-        reservation_request_id:
-          MOVIE_RESERVATION_DEMO_IDS.reservationRequests.auroraAda,
+        reservation_request_id: MOVIE_RESERVATION_DEMO_IDS.reservationRequests.auroraAda,
         movie_provider_id: MOVIE_RESERVATION_DEMO_IDS.providers.aurora,
-        screening_id:
-          MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
+        screening_id: MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
         auditorium_id: MOVIE_RESERVATION_DEMO_IDS.auditoriums.auroraMain,
         seat_id: MOVIE_RESERVATION_DEMO_IDS.seats.rivertonB3,
       }),
@@ -429,8 +383,7 @@ describe('Postgres-backed movie reservation workflow', () => {
       database('reservation_seats').insert({
         reservation_id: MOVIE_RESERVATION_DEMO_IDS.reservations.auroraAda,
         movie_provider_id: MOVIE_RESERVATION_DEMO_IDS.providers.aurora,
-        screening_id:
-          MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
+        screening_id: MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
         auditorium_id: MOVIE_RESERVATION_DEMO_IDS.auditoriums.auroraMain,
         seat_id: MOVIE_RESERVATION_DEMO_IDS.seats.rivertonB3,
       }),
@@ -441,9 +394,7 @@ describe('Postgres-backed movie reservation workflow', () => {
    * Sends the public GraphQL mutation used by clients to create a reservation
    * request for the seeded Aurora screening.
    */
-  async function requestReservation(
-    seatIds: readonly string[],
-  ): Promise<{ readonly id: string }> {
+  async function requestReservation(seatIds: readonly string[]): Promise<{ readonly id: string }> {
     const response = await request(app.getHttpServer())
       .post('/graphql')
       .send({
@@ -458,9 +409,7 @@ describe('Postgres-backed movie reservation workflow', () => {
         }`,
         variables: {
           input: {
-            screeningId:
-              MOVIE_RESERVATION_DEMO_IDS.screenings
-                .auroraTypeSafeMatineeMorning,
+            screeningId: MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
             seatIds,
           },
         },
@@ -469,18 +418,13 @@ describe('Postgres-backed movie reservation workflow', () => {
     expect(response.status).toBe(200);
     expect(response.body.errors).toBeUndefined();
 
-    return requireReservationRequestPayload(
-      response.body.data.requestReservation,
-      'requestReservation payload',
-    );
+    return requireReservationRequestPayload(response.body.data.requestReservation, 'requestReservation payload');
   }
 
   /**
    * Reads the public GraphQL status projection for a reservation request.
    */
-  async function readReservationRequestStatus(
-    id: string,
-  ): Promise<Record<string, unknown> | null> {
+  async function readReservationRequestStatus(id: string): Promise<Record<string, unknown> | null> {
     const response = await request(app.getHttpServer())
       .post('/graphql')
       .send({
@@ -495,18 +439,13 @@ describe('Postgres-backed movie reservation workflow', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.errors).toBeUndefined();
-    return response.body.data.reservationRequestStatus as Record<
-      string,
-      unknown
-    > | null;
+    return response.body.data.reservationRequestStatus as Record<string, unknown> | null;
   }
 
   /**
    * Reads the public GraphQL reservation result projection after processing.
    */
-  async function readReservationResult(
-    requestId: string,
-  ): Promise<Record<string, unknown> | null> {
+  async function readReservationResult(requestId: string): Promise<Record<string, unknown> | null> {
     const response = await request(app.getHttpServer())
       .post('/graphql')
       .send({
@@ -525,10 +464,7 @@ describe('Postgres-backed movie reservation workflow', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.errors).toBeUndefined();
-    return response.body.data.reservationResult as Record<
-      string,
-      unknown
-    > | null;
+    return response.body.data.reservationResult as Record<string, unknown> | null;
   }
 
   /**
@@ -541,13 +477,8 @@ describe('Postgres-backed movie reservation workflow', () => {
     if (process.env.MOVIE_RESERVATION_E2E_DATABASE === 'external') {
       const externalDatabaseUrl = process.env.TEST_DATABASE_URL;
 
-      if (
-        externalDatabaseUrl === undefined ||
-        externalDatabaseUrl.length === 0
-      ) {
-        throw new Error(
-          'TEST_DATABASE_URL is required when MOVIE_RESERVATION_E2E_DATABASE=external',
-        );
+      if (externalDatabaseUrl === undefined || externalDatabaseUrl.length === 0) {
+        throw new Error('TEST_DATABASE_URL is required when MOVIE_RESERVATION_E2E_DATABASE=external');
       }
 
       return externalDatabaseUrl;
@@ -575,10 +506,7 @@ async function resetDatabase(database: Knex): Promise<void> {
 /**
  * Runtime-checks the GraphQL response shape before later test steps use the id.
  */
-function requireReservationRequestPayload(
-  value: unknown,
-  name: string,
-): { readonly id: string } {
+function requireReservationRequestPayload(value: unknown, name: string): { readonly id: string } {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error(`${name} was not an object`);
   }
@@ -595,10 +523,7 @@ function requireReservationRequestPayload(
 /**
  * Builds deterministic worker claim input for direct work-repository tests.
  */
-function createClaimInput(
-  claimToken: string,
-  claimedAt = '2026-06-01T08:59:00.000Z',
-) {
+function createClaimInput(claimToken: string, claimedAt = '2026-06-01T08:59:00.000Z') {
   return {
     workerId: 'postgres-e2e-worker',
     claimToken,

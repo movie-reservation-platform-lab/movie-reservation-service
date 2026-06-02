@@ -42,11 +42,7 @@ describe('InProcessReservationRequestProcessor', () => {
     const processor = createProcessor({
       workRepository,
       reservationIds: ['99999999-9999-4999-8999-999999999913'],
-      clockInstants: [
-        '2026-06-01T09:00:00.000Z',
-        '2026-06-01T09:00:01.000Z',
-        '2026-06-01T09:00:02.000Z',
-      ],
+      clockInstants: ['2026-06-01T09:00:00.000Z', '2026-06-01T09:00:01.000Z', '2026-06-01T09:00:02.000Z'],
     });
 
     const actualResult = await processor.processNextPendingRequest();
@@ -73,9 +69,7 @@ describe('InProcessReservationRequestProcessor', () => {
       },
     });
     await expect(
-      repository.findReservationRequestById(
-        createReservationRequestId('99999999-9999-4999-8999-999999999912'),
-      ),
+      repository.findReservationRequestById(createReservationRequestId('99999999-9999-4999-8999-999999999912')),
     ).resolves.toMatchObject({
       id: '99999999-9999-4999-8999-999999999912',
       status: ReservationRequestStatus.REQUESTED,
@@ -96,12 +90,8 @@ describe('InProcessReservationRequestProcessor', () => {
   it('rejects the whole claimed request when any requested seat conflicts', async () => {
     const conflictingReservation = createReservation({
       id: createReservationId('99999999-9999-4999-8999-999999999914'),
-      movieProviderId: createMovieProviderId(
-        '99999999-9999-4999-8999-999999999901',
-      ),
-      reservationRequestId: createReservationRequestId(
-        '99999999-9999-4999-8999-999999999915',
-      ),
+      movieProviderId: createMovieProviderId('99999999-9999-4999-8999-999999999901'),
+      reservationRequestId: createReservationRequestId('99999999-9999-4999-8999-999999999915'),
       screeningId: createScreeningId('99999999-9999-4999-8999-999999999902'),
       seatIds: [createSeatId('99999999-9999-4999-8999-999999999903')],
       reservedByUserId: createUserId('user-existing'),
@@ -109,10 +99,7 @@ describe('InProcessReservationRequestProcessor', () => {
     });
     const pendingRequest = createRequestedReservationRequest({
       id: '99999999-9999-4999-8999-999999999916',
-      seatIds: [
-        '99999999-9999-4999-8999-999999999903',
-        '99999999-9999-4999-8999-999999999904',
-      ],
+      seatIds: ['99999999-9999-4999-8999-999999999903', '99999999-9999-4999-8999-999999999904'],
     });
     const store = createStore({
       reservationRequests: [pendingRequest],
@@ -144,9 +131,7 @@ describe('InProcessReservationRequestProcessor', () => {
       },
     });
     await expect(
-      repository.findReservationById(
-        createReservationId('99999999-9999-4999-8999-999999999917'),
-      ),
+      repository.findReservationById(createReservationId('99999999-9999-4999-8999-999999999917')),
     ).resolves.toBeNull();
   });
 
@@ -209,9 +194,7 @@ describe('InProcessReservationRequestProcessor', () => {
       },
     });
     await expect(
-      repository.findReservationRequestById(
-        createReservationRequestId('99999999-9999-4999-8999-999999999919'),
-      ),
+      repository.findReservationRequestById(createReservationRequestId('99999999-9999-4999-8999-999999999919')),
     ).resolves.toMatchObject({
       status: ReservationRequestStatus.FAILED,
     });
@@ -263,9 +246,7 @@ describe('InProcessReservationRequestProcessor', () => {
       },
     });
     await expect(
-      repository.findReservationRequestById(
-        createReservationRequestId('99999999-9999-4999-8999-999999999925'),
-      ),
+      repository.findReservationRequestById(createReservationRequestId('99999999-9999-4999-8999-999999999925')),
     ).resolves.toMatchObject({
       status: ReservationRequestStatus.FAILED,
     });
@@ -386,9 +367,7 @@ function createRequestedReservationRequest(input: {
 }): ReservationRequest {
   return createReservationRequest({
     id: createReservationRequestId(input.id),
-    movieProviderId: createMovieProviderId(
-      '99999999-9999-4999-8999-999999999901',
-    ),
+    movieProviderId: createMovieProviderId('99999999-9999-4999-8999-999999999901'),
     screeningId: createScreeningId('99999999-9999-4999-8999-999999999902'),
     seatIds: input.seatIds.map(createSeatId),
     requestedByUserId: createUserId('user-1'),

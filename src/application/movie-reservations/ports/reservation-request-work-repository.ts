@@ -63,9 +63,7 @@ export interface ReservationRequestWorkRepository {
    * Returns false when the row is terminal, expired and reclaimed by someone
    * else, or otherwise no longer owned by the supplied claim token.
    */
-  heartbeatClaimedReservationRequest(
-    input: HeartbeatClaimedReservationRequestInput,
-  ): Promise<boolean>;
+  heartbeatClaimedReservationRequest(input: HeartbeatClaimedReservationRequestInput): Promise<boolean>;
 
   /**
    * Finds an already-confirmed reservation that overlaps the requested seats

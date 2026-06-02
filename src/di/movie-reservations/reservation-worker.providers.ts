@@ -7,9 +7,7 @@ import {
 } from './fake-reservation-request-worker.service';
 import { RESERVATION_WORKER_OPTIONS } from './movie-reservation.tokens';
 
-export function createReservationWorkerProviders(
-  reservationWorkerMode: ReservationWorkerMode,
-): Provider[] {
+export function createReservationWorkerProviders(reservationWorkerMode: ReservationWorkerMode): Provider[] {
   if (reservationWorkerMode === 'disabled') {
     return [];
   }

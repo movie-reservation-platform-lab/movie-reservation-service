@@ -13,9 +13,7 @@ import { parseMovieReservationClaims } from './movie-reservation-claims-parser';
 export class JwtAuthenticationManager implements AuthenticationManager {
   constructor(private readonly tokenValidationClient: TokenValidationClient) {}
 
-  async authenticateJwtToken(
-    token: string | undefined,
-  ): Promise<AuthenticatedUser> {
+  async authenticateJwtToken(token: string | undefined): Promise<AuthenticatedUser> {
     if (token === undefined || token.trim().length === 0) {
       throw new AuthenticationError('Missing token');
     }

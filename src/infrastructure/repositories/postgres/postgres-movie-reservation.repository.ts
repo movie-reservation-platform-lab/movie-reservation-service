@@ -11,15 +11,9 @@ import type { ReservationId } from '../../../domain/movie-reservations/reservati
 import type { ReservationRequest } from '../../../domain/movie-reservations/reservation-request';
 import type { ReservationRequestId } from '../../../domain/movie-reservations/reservation-request-id';
 import type { Screening } from '../../../domain/movie-reservations/screening';
-import {
-  createScreeningId,
-  type ScreeningId,
-} from '../../../domain/movie-reservations/screening-id';
+import { createScreeningId, type ScreeningId } from '../../../domain/movie-reservations/screening-id';
 import type { Seat } from '../../../domain/movie-reservations/seat';
-import {
-  createSeatId,
-  type SeatId,
-} from '../../../domain/movie-reservations/seat-id';
+import { createSeatId, type SeatId } from '../../../domain/movie-reservations/seat-id';
 import { isPostgresUniqueViolation } from './postgres-errors';
 import {
   type MovieProviderRow,
@@ -39,19 +33,13 @@ import {
 export class PostgresMovieReservationRepository implements MovieReservationRepository {
   constructor(private readonly database: Knex) {}
 
-  async findMovieProviderById(
-    movieProviderId: MovieProviderId,
-  ): Promise<MovieProvider | null> {
-    const row = await this.database<MovieProviderRow>('movie_providers')
-      .where({ id: movieProviderId })
-      .first();
+  async findMovieProviderById(movieProviderId: MovieProviderId): Promise<MovieProvider | null> {
+    const row = await this.database<MovieProviderRow>('movie_providers').where({ id: movieProviderId }).first();
 
     return row === undefined ? null : toMovieProvider(row);
   }
 
-  async findMoviesByProviderId(
-    movieProviderId: MovieProviderId,
-  ): Promise<readonly Movie[]> {
+  async findMoviesByProviderId(movieProviderId: MovieProviderId): Promise<readonly Movie[]> {
     const rows = await this.database<MovieRow>('movies')
       .where({ movie_provider_id: movieProviderId })
       .orderBy('id', 'asc');
@@ -59,10 +47,7 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
     return rows.map(toMovie);
   }
 
-  async findMovieById(
-    movieProviderId: MovieProviderId,
-    movieId: MovieId,
-  ): Promise<Movie | null> {
+  async findMovieById(movieProviderId: MovieProviderId, movieId: MovieId): Promise<Movie | null> {
     const row = await this.database<MovieRow>('movies')
       .where({ id: movieId, movie_provider_id: movieProviderId })
       .first();
@@ -98,14 +83,8 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
     return row === undefined ? null : toScreening(row);
   }
 
-  async findSeatsByScreeningId(
-    movieProviderId: MovieProviderId,
-    screeningId: ScreeningId,
-  ): Promise<readonly Seat[]> {
-    const screening = await this.findScreeningForProvider(
-      movieProviderId,
-      screeningId,
-    );
+  async findSeatsByScreeningId(movieProviderId: MovieProviderId, screeningId: ScreeningId): Promise<readonly Seat[]> {
+    const screening = await this.findScreeningForProvider(movieProviderId, screeningId);
 
     if (screening === null) {
       return [];
@@ -135,9 +114,7 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
     const screenings = await this.database<ScreeningRow>('screenings')
       .where({ movie_provider_id: movieProviderId })
       .whereIn('id', screeningIds);
-    const auditoriumIds = [
-      ...new Set(screenings.map((screening) => screening.auditorium_id)),
-    ];
+    const auditoriumIds = [...new Set(screenings.map((screening) => screening.auditorium_id))];
     const seats =
       auditoriumIds.length === 0
         ? []
@@ -149,17 +126,13 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
     const seatsByAuditoriumId = new Map<string, Seat[]>();
 
     for (const seatRow of seats) {
-      const auditoriumSeats =
-        seatsByAuditoriumId.get(seatRow.auditorium_id) ?? [];
+      const auditoriumSeats = seatsByAuditoriumId.get(seatRow.auditorium_id) ?? [];
       auditoriumSeats.push(toSeat(seatRow));
       seatsByAuditoriumId.set(seatRow.auditorium_id, auditoriumSeats);
     }
 
     for (const screening of screenings) {
-      seatsByScreeningId.set(
-        createScreeningId(screening.id),
-        seatsByAuditoriumId.get(screening.auditorium_id) ?? [],
-      );
+      seatsByScreeningId.set(createScreeningId(screening.id), seatsByAuditoriumId.get(screening.auditorium_id) ?? []);
     }
 
     return seatsByScreeningId;
@@ -192,12 +165,8 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
     return rows.map(toSeat);
   }
 
-  async findReservationRequestById(
-    reservationRequestId: ReservationRequestId,
-  ): Promise<ReservationRequest | null> {
-    const row = await this.database<ReservationRequestRow>(
-      'reservation_requests',
-    )
+  async findReservationRequestById(reservationRequestId: ReservationRequestId): Promise<ReservationRequest | null> {
+    const row = await this.database<ReservationRequestRow>('reservation_requests')
       .where({ id: reservationRequestId })
       .first();
 
@@ -205,15 +174,10 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
       return null;
     }
 
-    return toReservationRequest(
-      row,
-      await this.findReservationRequestSeatIds(reservationRequestId),
-    );
+    return toReservationRequest(row, await this.findReservationRequestSeatIds(reservationRequestId));
   }
 
-  async saveReservationRequest(
-    reservationRequest: ReservationRequest,
-  ): Promise<void> {
+  async saveReservationRequest(reservationRequest: ReservationRequest): Promise<void> {
     try {
       await this.database.transaction(async (trx) => {
         const screeningRow = await this.requireScreeningRowForProvider(
@@ -251,12 +215,8 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
     }
   }
 
-  async findReservationById(
-    reservationId: ReservationId,
-  ): Promise<Reservation | null> {
-    const row = await this.database<ReservationRow>('reservations')
-      .where({ id: reservationId })
-      .first();
+  async findReservationById(reservationId: ReservationId): Promise<Reservation | null> {
+    const row = await this.database<ReservationRow>('reservations').where({ id: reservationId }).first();
 
     if (row === undefined) {
       return null;
@@ -265,9 +225,7 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
     return toReservation(row, await this.findReservationSeatIds(reservationId));
   }
 
-  async findReservationByReservationRequestId(
-    reservationRequestId: ReservationRequestId,
-  ): Promise<Reservation | null> {
+  async findReservationByReservationRequestId(reservationRequestId: ReservationRequestId): Promise<Reservation | null> {
     const row = await this.database<ReservationRow>('reservations')
       .where({ reservation_request_id: reservationRequestId })
       .first();
@@ -279,12 +237,8 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
     return toReservation(row, await this.findReservationSeatIds(row.id));
   }
 
-  private async findReservationRequestSeatIds(
-    reservationRequestId: ReservationRequestId,
-  ): Promise<readonly SeatId[]> {
-    const rows = await this.database<{ readonly seat_id: string }>(
-      'reservation_request_seats',
-    )
+  private async findReservationRequestSeatIds(reservationRequestId: ReservationRequestId): Promise<readonly SeatId[]> {
+    const rows = await this.database<{ readonly seat_id: string }>('reservation_request_seats')
       .select('seat_id')
       .where({ reservation_request_id: reservationRequestId })
       .orderBy('seat_id', 'asc');
@@ -311,12 +265,8 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
     return row;
   }
 
-  private async findReservationSeatIds(
-    reservationId: ReservationId | string,
-  ): Promise<readonly SeatId[]> {
-    const rows = await this.database<{ readonly seat_id: string }>(
-      'reservation_seats',
-    )
+  private async findReservationSeatIds(reservationId: ReservationId | string): Promise<readonly SeatId[]> {
+    const rows = await this.database<{ readonly seat_id: string }>('reservation_seats')
       .select('seat_id')
       .where({ reservation_id: reservationId })
       .orderBy('seat_id', 'asc');

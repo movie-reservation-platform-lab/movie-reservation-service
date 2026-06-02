@@ -20,9 +20,7 @@ describe('createActorContext', () => {
       userId: createUserId('user-ada'),
       username: 'ada',
       email: 'ada@example.test',
-      movieProviderId: createMovieProviderId(
-        '11111111-1111-4111-8111-111111111111',
-      ),
+      movieProviderId: createMovieProviderId('11111111-1111-4111-8111-111111111111'),
       roles: [UserRole.CUSTOMER],
       scopes: ['reservations:read'],
     });
@@ -55,10 +53,7 @@ describe('MovieReservationsService authorization behavior', () => {
       id: '88888888-8888-4888-8888-888888888881',
       movieProviderId: '11111111-1111-4111-8111-111111111111',
       reservedByUserId: 'user-ada',
-      seatIds: [
-        '66666666-6666-4666-8666-666666666661',
-        '66666666-6666-4666-8666-666666666662',
-      ],
+      seatIds: ['66666666-6666-4666-8666-666666666661', '66666666-6666-4666-8666-666666666662'],
     });
   });
 
@@ -98,9 +93,7 @@ describe('MovieReservationsService authorization behavior', () => {
       userId: createUserId('user-aurora-admin'),
       username: 'aurora-admin',
       email: 'admin@aurora.example.test',
-      movieProviderId: createMovieProviderId(
-        '11111111-1111-4111-8111-111111111111',
-      ),
+      movieProviderId: createMovieProviderId('11111111-1111-4111-8111-111111111111'),
       roles: [UserRole.TENANT_ADMIN],
       scopes: [],
     });
@@ -124,21 +117,15 @@ describe('MovieReservationsService reservation requests', () => {
       userId: 'user-ada',
       movieProviderId: MOVIE_RESERVATION_DEMO_IDS.providers.aurora,
     });
-    const screeningId = createScreeningId(
-      MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
-    );
-    const rivertonSeatId = createSeatId(
-      MOVIE_RESERVATION_DEMO_IDS.seats.rivertonB3,
-    );
+    const screeningId = createScreeningId(MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning);
+    const rivertonSeatId = createSeatId(MOVIE_RESERVATION_DEMO_IDS.seats.rivertonB3);
 
     await expect(
       service.requestReservation(actor, {
         screeningId,
         seatIds: [rivertonSeatId],
       }),
-    ).rejects.toThrow(
-      `Seat ${rivertonSeatId} is not available for screening ${screeningId}`,
-    );
+    ).rejects.toThrow(`Seat ${rivertonSeatId} is not available for screening ${screeningId}`);
   });
 });
 
@@ -156,10 +143,7 @@ class StubReservationRequestIdGenerator implements ReservationRequestIdGenerator
   }
 }
 
-function createCustomerActor(input: {
-  readonly userId: string;
-  readonly movieProviderId: string;
-}) {
+function createCustomerActor(input: { readonly userId: string; readonly movieProviderId: string }) {
   return createActorContext({
     userId: createUserId(input.userId),
     username: input.userId,

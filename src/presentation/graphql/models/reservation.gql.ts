@@ -1,19 +1,16 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
 
 @ObjectType('Reservation', {
-  description:
-    'Final confirmed booking created after a reservation request is successfully processed.',
+  description: 'Final confirmed booking created after a reservation request is successfully processed.',
 })
 export class ReservationGql {
   @Field(() => ID, {
-    description:
-      'Confirmed reservation id. Clients usually reach this object through reservationResult(requestId).',
+    description: 'Confirmed reservation id. Clients usually reach this object through reservationResult(requestId).',
   })
   id!: string;
 
   @Field(() => ID, {
-    description:
-      'Reservation request that produced this confirmed reservation.',
+    description: 'Reservation request that produced this confirmed reservation.',
   })
   reservationRequestId!: string;
 

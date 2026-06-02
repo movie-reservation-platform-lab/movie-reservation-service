@@ -6,9 +6,7 @@ import { AuthenticatedUserGql } from '../models/authenticated-user.gql';
  *
  * The mapper keeps GraphQL classes out of the domain and application layers.
  */
-export function toAuthenticatedUserGql(
-  authenticatedUser: AuthenticatedUser,
-): AuthenticatedUserGql {
+export function toAuthenticatedUserGql(authenticatedUser: AuthenticatedUser): AuthenticatedUserGql {
   const gql = new AuthenticatedUserGql();
   gql.userId = authenticatedUser.userId;
   gql.username = authenticatedUser.username;

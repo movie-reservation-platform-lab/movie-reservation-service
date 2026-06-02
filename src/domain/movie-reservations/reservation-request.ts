@@ -37,9 +37,7 @@ export interface CreateReservationRequestInput {
  * a request must include at least one selected seat, and each selected
  * seat can appear only once.
  */
-export function createReservationRequest(
-  input: CreateReservationRequestInput,
-): ReservationRequest {
+export function createReservationRequest(input: CreateReservationRequestInput): ReservationRequest {
   if (input.seatIds.length === 0) {
     throw new Error('ReservationRequest must include at least one seat');
   }

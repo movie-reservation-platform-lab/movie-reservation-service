@@ -27,13 +27,11 @@ export function createMovieReservationUseCaseProviders(): Provider[] {
     AuthorizationService,
     {
       provide: RESERVATION_ID_GENERATOR,
-      useFactory: (): ReservationIdGenerator =>
-        new RandomReservationIdGenerator(),
+      useFactory: (): ReservationIdGenerator => new RandomReservationIdGenerator(),
     },
     {
       provide: RESERVATION_REQUEST_ID_GENERATOR,
-      useFactory: (): ReservationRequestIdGenerator =>
-        new RandomReservationRequestIdGenerator(),
+      useFactory: (): ReservationRequestIdGenerator => new RandomReservationRequestIdGenerator(),
     },
     {
       provide: CLOCK,
@@ -46,23 +44,13 @@ export function createMovieReservationUseCaseProviders(): Provider[] {
         reservationIdGenerator: ReservationIdGenerator,
         clock: Clock,
       ): ReservationRequestProcessor =>
-        new InProcessReservationRequestProcessor(
-          workRepository,
-          reservationIdGenerator,
-          clock,
-          {
-            workerId: 'fake-in-process-reservation-worker',
-            claimLeaseMs: config.RESERVATION_WORKER_LEASE_MS,
-            maxLeaseTimeouts: config.RESERVATION_WORKER_MAX_LEASE_TIMEOUTS,
-            maxTransientFailures:
-              config.RESERVATION_WORKER_MAX_TRANSIENT_FAILURES,
-          },
-        ),
-      inject: [
-        RESERVATION_REQUEST_WORK_REPOSITORY,
-        RESERVATION_ID_GENERATOR,
-        CLOCK,
-      ],
+        new InProcessReservationRequestProcessor(workRepository, reservationIdGenerator, clock, {
+          workerId: 'fake-in-process-reservation-worker',
+          claimLeaseMs: config.RESERVATION_WORKER_LEASE_MS,
+          maxLeaseTimeouts: config.RESERVATION_WORKER_MAX_LEASE_TIMEOUTS,
+          maxTransientFailures: config.RESERVATION_WORKER_MAX_TRANSIENT_FAILURES,
+        }),
+      inject: [RESERVATION_REQUEST_WORK_REPOSITORY, RESERVATION_ID_GENERATOR, CLOCK],
     },
     {
       provide: MovieReservationsService,
@@ -71,16 +59,8 @@ export function createMovieReservationUseCaseProviders(): Provider[] {
         authorizationService: AuthorizationService,
         reservationRequestIdGenerator: ReservationRequestIdGenerator,
       ): MovieReservationsService =>
-        new MovieReservationsService(
-          repository,
-          authorizationService,
-          reservationRequestIdGenerator,
-        ),
-      inject: [
-        MOVIE_RESERVATION_REPOSITORY,
-        AuthorizationService,
-        RESERVATION_REQUEST_ID_GENERATOR,
-      ],
+        new MovieReservationsService(repository, authorizationService, reservationRequestIdGenerator),
+      inject: [MOVIE_RESERVATION_REPOSITORY, AuthorizationService, RESERVATION_REQUEST_ID_GENERATOR],
     },
   ];
 }

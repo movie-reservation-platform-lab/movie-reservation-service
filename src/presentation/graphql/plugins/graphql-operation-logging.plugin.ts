@@ -89,9 +89,7 @@ export function createGraphqlOperationLoggingPlugin(
  * Per-request logging state is initialized before Apollo has resolved the
  * operation name and operation type.
  */
-function createRequestLogState(
-  context: MovieReservationGraphqlContext,
-): GraphqlOperationLogRequestState {
+function createRequestLogState(context: MovieReservationGraphqlContext): GraphqlOperationLogRequestState {
   return {
     startedAt: process.hrtime.bigint(),
     metadata: createInitialMetadata(context),
@@ -163,10 +161,7 @@ function logOperationFinish(
  * A synthetic start log is emitted when Apollo fails before operation metadata
  * has been resolved.
  */
-function ensureOperationStartLogged(
-  logger: GraphqlOperationLogger,
-  state: GraphqlOperationLogRequestState,
-): void {
+function ensureOperationStartLogged(logger: GraphqlOperationLogger, state: GraphqlOperationLogRequestState): void {
   if (state.operationStartLogged) {
     return;
   }
@@ -179,38 +174,22 @@ function ensureOperationStartLogged(
  * Context failures are logged separately because no authenticated actor may be
  * available yet.
  */
-function logContextCreationFailure(
-  logger: GraphqlOperationLogger,
-  error: Error,
-): void {
-  logger.error(
-    `event=graphql.context.failure error="${sanitizeLogValue(error.message)}"`,
-    error.stack,
-  );
+function logContextCreationFailure(logger: GraphqlOperationLogger, error: Error): void {
+  logger.error(`event=graphql.context.failure error="${sanitizeLogValue(error.message)}"`, error.stack);
 }
 
 /**
  * Unexpected Apollo request-processing failures are logged outside the normal
  * operation lifecycle.
  */
-function logUnexpectedRequestProcessingError(
-  logger: GraphqlOperationLogger,
-  error: Error,
-): void {
-  logger.error(
-    `event=graphql.operation.unexpected_error error="${sanitizeLogValue(
-      error.message,
-    )}"`,
-    error.stack,
-  );
+function logUnexpectedRequestProcessingError(logger: GraphqlOperationLogger, error: Error): void {
+  logger.error(`event=graphql.operation.unexpected_error error="${sanitizeLogValue(error.message)}"`, error.stack);
 }
 
 /**
  * Metadata available from the authenticated GraphQL context is captured first.
  */
-function createInitialMetadata(
-  context: MovieReservationGraphqlContext,
-): GraphqlOperationLogMetadata {
+function createInitialMetadata(context: MovieReservationGraphqlContext): GraphqlOperationLogMetadata {
   return {
     operationName: anonymousOperationName,
     operationType: 'unknown',
@@ -248,16 +227,8 @@ function formatOperationLog(
   }
 
   if (outcome?.errors !== undefined) {
-    parts.push(
-      `errorTypes="${sanitizeLogValue(
-        outcome.errors.map((error) => error.type).join(' | '),
-      )}"`,
-    );
-    parts.push(
-      `errors="${sanitizeLogValue(
-        outcome.errors.map((error) => error.message).join(' | '),
-      )}"`,
-    );
+    parts.push(`errorTypes="${sanitizeLogValue(outcome.errors.map((error) => error.type).join(' | '))}"`);
+    parts.push(`errors="${sanitizeLogValue(outcome.errors.map((error) => error.message).join(' | '))}"`);
   }
 
   return parts.join(' ');
@@ -274,9 +245,7 @@ function calculateDurationMs(startedAt: bigint): number {
 /**
  * GraphQL errors are read from single-result responses only.
  */
-function readResponseErrors(
-  response: GraphqlOperationResponse,
-): readonly unknown[] {
+function readResponseErrors(response: GraphqlOperationResponse): readonly unknown[] {
   if (response.body.kind !== 'single') {
     return [];
   }
@@ -303,9 +272,7 @@ function createErrorTrace(errors: readonly GraphQLError[]): string | undefined {
 /**
  * Error details are reduced to the fields intended for operation logs.
  */
-function scrubGraphqlErrorForLog(
-  error: GraphQLError,
-): ScrubbedGraphqlErrorForLog {
+function scrubGraphqlErrorForLog(error: GraphQLError): ScrubbedGraphqlErrorForLog {
   return {
     type: getGraphqlErrorType(error),
     // TODO: Replace this placeholder with production-safe message scrubbing

@@ -13,8 +13,7 @@ const READINESS_CHECKS = Symbol('READINESS_CHECKS');
     },
     {
       provide: HealthService,
-      useFactory: (readinessChecks: readonly ReadinessCheck[]): HealthService =>
-        new HealthService(readinessChecks),
+      useFactory: (readinessChecks: readonly ReadinessCheck[]): HealthService => new HealthService(readinessChecks),
       inject: [READINESS_CHECKS],
     },
   ],

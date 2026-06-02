@@ -35,25 +35,17 @@ export class MovieReservationsResolver {
   ) {}
 
   @Query(() => AuthenticatedUserGql, {
-    description:
-      'Returns the authenticated user and movie provider context for this request.',
+    description: 'Returns the authenticated user and movie provider context for this request.',
   })
-  async me(
-    @Context() context: MovieReservationGraphqlContext,
-  ): Promise<AuthenticatedUserGql> {
+  async me(@Context() context: MovieReservationGraphqlContext): Promise<AuthenticatedUserGql> {
     return toAuthenticatedUserGql(context.authenticatedUser);
   }
 
   @Query(() => [MovieGql], {
-    description:
-      'Lists movies available to the authenticated user within their movie provider.',
+    description: 'Lists movies available to the authenticated user within their movie provider.',
   })
-  async movies(
-    @Context() context: MovieReservationGraphqlContext,
-  ): Promise<MovieGql[]> {
-    const movies = await this.movieReservationsService.listMovies(
-      context.actor,
-    );
+  async movies(@Context() context: MovieReservationGraphqlContext): Promise<MovieGql[]> {
+    const movies = await this.movieReservationsService.listMovies(context.actor);
     return movies.map(toMovieGql);
   }
 
@@ -82,22 +74,15 @@ export class MovieReservationsResolver {
     })
     movieId?: string,
   ): Promise<ScreeningGql[]> {
-    const screeningInput =
-      movieId === undefined ? {} : { movieId: createMovieId(movieId) };
-    const screenings = await this.movieReservationsService.listScreenings(
+    const screeningInput = movieId === undefined ? {} : { movieId: createMovieId(movieId) };
+    const screenings = await this.movieReservationsService.listScreenings(context.actor, screeningInput);
+
+    const seatsByScreeningId = await this.movieReservationsService.listSeatsForScreenings(
       context.actor,
-      screeningInput,
+      screenings.map((screening) => screening.id),
     );
 
-    const seatsByScreeningId =
-      await this.movieReservationsService.listSeatsForScreenings(
-        context.actor,
-        screenings.map((screening) => screening.id),
-      );
-
-    return screenings.map((screening) =>
-      toScreeningGql(screening, seatsByScreeningId.get(screening.id) ?? []),
-    );
+    return screenings.map((screening) => toScreeningGql(screening, seatsByScreeningId.get(screening.id) ?? []));
   }
 
   @Reflect.metadata('design:paramtypes', [Object, RequestReservationInputGql])
@@ -114,11 +99,10 @@ export class MovieReservationsResolver {
     })
     input: RequestReservationInputGql,
   ): Promise<ReservationRequestGql> {
-    const reservationRequest =
-      await this.movieReservationsService.requestReservation(context.actor, {
-        screeningId: createScreeningId(input.screeningId),
-        seatIds: input.seatIds.map(createSeatId),
-      });
+    const reservationRequest = await this.movieReservationsService.requestReservation(context.actor, {
+      screeningId: createScreeningId(input.screeningId),
+      seatIds: input.seatIds.map(createSeatId),
+    });
 
     return toReservationRequestGql(reservationRequest);
   }
@@ -130,8 +114,7 @@ export class MovieReservationsResolver {
   @Reflect.metadata('design:paramtypes', [Object, String])
   @Query(() => ReservationRequestGql, {
     nullable: true,
-    description:
-      'Polls the status of a reservation request created by requestReservation.',
+    description: 'Polls the status of a reservation request created by requestReservation.',
   })
   async reservationRequestStatus(
     @Context() context: MovieReservationGraphqlContext,
@@ -141,22 +124,18 @@ export class MovieReservationsResolver {
     })
     id: string,
   ): Promise<ReservationRequestGql | null> {
-    const reservationRequest =
-      await this.movieReservationsService.getReservationRequest(
-        context.actor,
-        createReservationRequestId(id),
-      );
+    const reservationRequest = await this.movieReservationsService.getReservationRequest(
+      context.actor,
+      createReservationRequestId(id),
+    );
 
-    return reservationRequest === null
-      ? null
-      : toReservationRequestGql(reservationRequest);
+    return reservationRequest === null ? null : toReservationRequestGql(reservationRequest);
   }
 
   @Reflect.metadata('design:paramtypes', [Object, String])
   @Query(() => ReservationGql, {
     nullable: true,
-    description:
-      'Fetches the confirmed reservation produced by a completed reservation request.',
+    description: 'Fetches the confirmed reservation produced by a completed reservation request.',
   })
   async reservationResult(
     @Context() context: MovieReservationGraphqlContext,
@@ -167,11 +146,10 @@ export class MovieReservationsResolver {
     })
     requestId: string,
   ): Promise<ReservationGql | null> {
-    const reservation =
-      await this.movieReservationsService.getReservationByReservationRequestId(
-        context.actor,
-        createReservationRequestId(requestId),
-      );
+    const reservation = await this.movieReservationsService.getReservationByReservationRequestId(
+      context.actor,
+      createReservationRequestId(requestId),
+    );
 
     return reservation === null ? null : toReservationGql(reservation);
   }

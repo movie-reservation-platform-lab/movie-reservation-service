@@ -1,8 +1,7 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
 
 @ObjectType('Movie', {
-  description:
-    'Movie title and metadata available within the authenticated movie provider.',
+  description: 'Movie title and metadata available within the authenticated movie provider.',
 })
 export class MovieGql {
   @Field(() => ID, { description: 'Movie id within the movie provider.' })

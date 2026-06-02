@@ -54,16 +54,14 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
     input: ReservationRequestProcessingInput = {},
   ): Promise<ReservationRequestProcessingResult> {
     const startedAt = this.clock.nowIsoString();
-    const claimedWorkItem =
-      await this.workRepository.claimNextPendingReservationRequest({
-        workerId: this.options.workerId,
-        claimToken:
-          input.claimToken ?? this.options.createClaimToken?.() ?? randomUUID(),
-        claimedAt: startedAt,
-        claimExpiresAt: addMilliseconds(startedAt, this.options.claimLeaseMs),
-        maxLeaseTimeouts: this.options.maxLeaseTimeouts,
-        maxTransientFailures: this.options.maxTransientFailures,
-      });
+    const claimedWorkItem = await this.workRepository.claimNextPendingReservationRequest({
+      workerId: this.options.workerId,
+      claimToken: input.claimToken ?? this.options.createClaimToken?.() ?? randomUUID(),
+      claimedAt: startedAt,
+      claimExpiresAt: addMilliseconds(startedAt, this.options.claimLeaseMs),
+      maxLeaseTimeouts: this.options.maxLeaseTimeouts,
+      maxTransientFailures: this.options.maxTransientFailures,
+    });
 
     if (claimedWorkItem === null) {
       return { outcome: 'no-pending-request' };
@@ -73,11 +71,10 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
     let terminalStatePersisted = false;
 
     try {
-      const conflict =
-        await this.workRepository.findConflictingConfirmedReservation({
-          screeningId: claimedWorkItem.reservationRequest.screeningId,
-          seatIds: claimedWorkItem.reservationRequest.seatIds,
-        });
+      const conflict = await this.workRepository.findConflictingConfirmedReservation({
+        screeningId: claimedWorkItem.reservationRequest.screeningId,
+        seatIds: claimedWorkItem.reservationRequest.seatIds,
+      });
 
       if (conflict !== null) {
         const attempt: RejectedReservationRequestProcessingAttempt = {
@@ -89,12 +86,11 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
           reason: 'seat-conflict',
           conflictingReservationId: conflict.id,
         };
-        const reservationRequest =
-          await this.workRepository.rejectClaimedReservationRequest({
-            claimedWorkItem,
-            reason: 'seat-conflict',
-            attempt,
-          });
+        const reservationRequest = await this.workRepository.rejectClaimedReservationRequest({
+          claimedWorkItem,
+          reason: 'seat-conflict',
+          attempt,
+        });
         terminalStatePersisted = true;
 
         return {
@@ -122,12 +118,11 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
         outcome: 'confirmed',
         reservationId: reservation.id,
       };
-      const confirmResult =
-        await this.workRepository.confirmClaimedReservationRequest({
-          claimedWorkItem,
-          reservation,
-          attempt,
-        });
+      const confirmResult = await this.workRepository.confirmClaimedReservationRequest({
+        claimedWorkItem,
+        reservation,
+        attempt,
+      });
       terminalStatePersisted = true;
 
       if (confirmResult.outcome === 'rejected') {
@@ -181,29 +176,26 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
     const nextTransientFailureCount = claimedWorkItem.transientFailureCount + 1;
 
     if (nextTransientFailureCount < this.options.maxTransientFailures) {
-      const reservationRequest =
-        await this.workRepository.releaseClaimedReservationRequestForRetry({
-          claimedWorkItem,
-          reason: 'unexpected-error',
-          attempt,
-        });
+      const reservationRequest = await this.workRepository.releaseClaimedReservationRequestForRetry({
+        claimedWorkItem,
+        reason: 'unexpected-error',
+        attempt,
+      });
 
       return {
         outcome: 'retryable-failure',
         attempt,
         reservationRequest,
         reason: 'unexpected-error',
-        attemptsRemaining:
-          this.options.maxTransientFailures - nextTransientFailureCount,
+        attemptsRemaining: this.options.maxTransientFailures - nextTransientFailureCount,
       };
     }
 
-    const reservationRequest =
-      await this.workRepository.failClaimedReservationRequest({
-        claimedWorkItem,
-        reason: 'unexpected-error',
-        attempt,
-      });
+    const reservationRequest = await this.workRepository.failClaimedReservationRequest({
+      claimedWorkItem,
+      reason: 'unexpected-error',
+      attempt,
+    });
 
     return {
       outcome: 'failed',

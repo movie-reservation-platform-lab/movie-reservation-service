@@ -108,14 +108,7 @@ describe('committed service env profile templates', () => {
 
   it.each(runtimeEnvTemplateExpectations)(
     '%s parses to the expected runtime dependency modes',
-    ({
-      relativePath,
-      authMode,
-      persistenceMode,
-      enableGraphiql,
-      reservationWorkerMode,
-      host,
-    }) => {
+    ({ relativePath, authMode, persistenceMode, enableGraphiql, reservationWorkerMode, host }) => {
       const config = parseRuntimeEnvTemplate(relativePath);
 
       expect(config.AUTH_MODE).toBe(authMode);
@@ -125,20 +118,19 @@ describe('committed service env profile templates', () => {
       expect(config.HOST).toBe(host);
     },
   );
-  it.each(
-    runtimeEnvTemplateExpectations.filter(
-      (expectation) => expectation.databaseHost !== undefined,
-    ),
-  )('%s selects the expected Postgres hostname', (expectation) => {
-    const { relativePath, databaseHost: expectedHost } = expectation;
-    if (expectedHost === undefined) {
-      throw new Error('template does not define an expected database');
-    }
+  it.each(runtimeEnvTemplateExpectations.filter((expectation) => expectation.databaseHost !== undefined))(
+    '%s selects the expected Postgres hostname',
+    (expectation) => {
+      const { relativePath, databaseHost: expectedHost } = expectation;
+      if (expectedHost === undefined) {
+        throw new Error('template does not define an expected database');
+      }
 
-    const profile = readEnvProfile(relativePath);
+      const profile = readEnvProfile(relativePath);
 
-    expect(profile.DATABASE_URL).toContain(`@${expectedHost}/`);
-  });
+      expect(profile.DATABASE_URL).toContain(`@${expectedHost}/`);
+    },
+  );
 });
 
 describe('parseConfig persistence settings', () => {
@@ -160,17 +152,14 @@ describe('parseConfig persistence settings', () => {
         NODE_ENV: 'test',
         COMPOSITION_PROFILE: 'local-postgres',
       }),
-    ).toThrow(
-      'DATABASE_URL is required when COMPOSITION_PROFILE selects Postgres persistence',
-    );
+    ).toThrow('DATABASE_URL is required when COMPOSITION_PROFILE selects Postgres persistence');
   });
 
   it('accepts explicit Postgres pool bounds', () => {
     const config = parseConfig({
       NODE_ENV: 'test',
       COMPOSITION_PROFILE: 'local-postgres',
-      DATABASE_URL:
-        'postgres://movie_reservation_service:test@localhost:5432/movie_reservation_service',
+      DATABASE_URL: 'postgres://movie_reservation_service:test@localhost:5432/movie_reservation_service',
       DATABASE_POOL_MIN: '1',
       DATABASE_POOL_MAX: '3',
     });
@@ -184,14 +173,11 @@ describe('parseConfig persistence settings', () => {
       parseConfig({
         NODE_ENV: 'test',
         COMPOSITION_PROFILE: 'local-postgres',
-        DATABASE_URL:
-          'postgres://movie_reservation_service:test@localhost:5432/movie_reservation_service',
+        DATABASE_URL: 'postgres://movie_reservation_service:test@localhost:5432/movie_reservation_service',
         DATABASE_POOL_MIN: '4',
         DATABASE_POOL_MAX: '3',
       }),
-    ).toThrow(
-      'DATABASE_POOL_MAX must be greater than or equal to DATABASE_POOL_MIN',
-    );
+    ).toThrow('DATABASE_POOL_MAX must be greater than or equal to DATABASE_POOL_MIN');
   });
 });
 
@@ -259,13 +245,10 @@ describe('parseConfig runtime and worker settings', () => {
       parseConfig({
         NODE_ENV: 'production',
         COMPOSITION_PROFILE: 'production-oidc',
-        DATABASE_URL:
-          'postgres://movie_reservation_service:test@localhost:5432/movie_reservation_service',
+        DATABASE_URL: 'postgres://movie_reservation_service:test@localhost:5432/movie_reservation_service',
         RESERVATION_WORKER_MODE: 'fake-in-process',
       }),
-    ).toThrow(
-      'fake-in-process reservation worker is only allowed in development and test environments',
-    );
+    ).toThrow('fake-in-process reservation worker is only allowed in development and test environments');
   });
 
   it('rejects a heartbeat interval that cannot renew before lease expiry', () => {
@@ -275,9 +258,7 @@ describe('parseConfig runtime and worker settings', () => {
         RESERVATION_WORKER_LEASE_MS: '1000',
         RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS: '1000',
       }),
-    ).toThrow(
-      'RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS must be less than RESERVATION_WORKER_LEASE_MS',
-    );
+    ).toThrow('RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS must be less than RESERVATION_WORKER_LEASE_MS');
   });
 });
 
@@ -342,12 +323,8 @@ function readEnvProfile(relativePath: string): Record<string, string> {
 function parseRuntimeEnvTemplate(relativePath: string) {
   const env = readEnvProfile(relativePath);
 
-  if (
-    env.COMPOSITION_PROFILE === 'production-oidc' &&
-    env.DATABASE_URL === undefined
-  ) {
-    env.DATABASE_URL =
-      'postgres://movie_reservation_service:test@localhost:5432/movie_reservation_service';
+  if (env.COMPOSITION_PROFILE === 'production-oidc' && env.DATABASE_URL === undefined) {
+    env.DATABASE_URL = 'postgres://movie_reservation_service:test@localhost:5432/movie_reservation_service';
   }
 
   return parseConfig(env);

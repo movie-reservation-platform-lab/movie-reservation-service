@@ -41,9 +41,7 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
     let nextWorkItem: ClaimedReservationRequest | null = null;
 
     for (const reservationRequest of this.store.reservationRequestsById.values()) {
-      const metadata = this.store.getReservationRequestWorkMetadata(
-        reservationRequest.id,
-      );
+      const metadata = this.store.getReservationRequestWorkMetadata(reservationRequest.id);
 
       if (
         reservationRequest.status === ReservationRequestStatus.REQUESTED &&
@@ -54,21 +52,13 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
 
       if (
         reservationRequest.status !== ReservationRequestStatus.REQUESTED &&
-        !isExpiredProcessingRequest(
-          reservationRequest,
-          metadata,
-          input.claimedAt,
-        )
+        !isExpiredProcessingRequest(reservationRequest, metadata, input.claimedAt)
       ) {
         continue;
       }
 
       if (nextWorkItem === null || metadata.sequence < nextWorkItem.sequence) {
-        const isLeaseTimeoutReclaim = isExpiredProcessingRequest(
-          reservationRequest,
-          metadata,
-          input.claimedAt,
-        );
+        const isLeaseTimeoutReclaim = isExpiredProcessingRequest(reservationRequest, metadata, input.claimedAt);
 
         nextWorkItem = {
           reservationRequest,
@@ -77,8 +67,7 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
           claimToken: input.claimToken,
           claimedAt: input.claimedAt,
           claimExpiresAt: input.claimExpiresAt,
-          leaseTimeoutCount:
-            metadata.leaseTimeoutCount + (isLeaseTimeoutReclaim ? 1 : 0),
+          leaseTimeoutCount: metadata.leaseTimeoutCount + (isLeaseTimeoutReclaim ? 1 : 0),
           transientFailureCount: metadata.transientFailureCount,
         };
       }
@@ -88,49 +77,34 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
       return null;
     }
 
-    const selectedMetadata = this.store.getReservationRequestWorkMetadata(
-      nextWorkItem.reservationRequest.id,
-    );
+    const selectedMetadata = this.store.getReservationRequestWorkMetadata(nextWorkItem.reservationRequest.id);
     const isLeaseTimeoutReclaim = isExpiredProcessingRequest(
       nextWorkItem.reservationRequest,
       selectedMetadata,
       input.claimedAt,
     );
 
-    if (
-      isLeaseTimeoutReclaim &&
-      selectedMetadata.leaseTimeoutCount >= input.maxLeaseTimeouts
-    ) {
-      this.failExpiredClaimAfterLeaseTimeoutBudget(
-        nextWorkItem.reservationRequest,
-        input.claimedAt,
-      );
+    if (isLeaseTimeoutReclaim && selectedMetadata.leaseTimeoutCount >= input.maxLeaseTimeouts) {
+      this.failExpiredClaimAfterLeaseTimeoutBudget(nextWorkItem.reservationRequest, input.claimedAt);
       return null;
     }
 
     const processingReservationRequest =
-      nextWorkItem.reservationRequest.status ===
-      ReservationRequestStatus.PROCESSING
+      nextWorkItem.reservationRequest.status === ReservationRequestStatus.PROCESSING
         ? nextWorkItem.reservationRequest
         : startProcessingReservationRequest(nextWorkItem.reservationRequest);
 
-    this.store.reservationRequestsById.set(
-      processingReservationRequest.id,
-      processingReservationRequest,
-    );
-    this.store.updateReservationRequestWorkMetadata(
-      processingReservationRequest.id,
-      {
-        sequence: nextWorkItem.sequence,
-        leaseTimeoutCount: nextWorkItem.leaseTimeoutCount,
-        transientFailureCount: nextWorkItem.transientFailureCount,
-        claimedBy: input.workerId,
-        claimToken: input.claimToken,
-        claimedAt: input.claimedAt,
-        claimExpiresAt: input.claimExpiresAt,
-        lastHeartbeatAt: input.claimedAt,
-      },
-    );
+    this.store.reservationRequestsById.set(processingReservationRequest.id, processingReservationRequest);
+    this.store.updateReservationRequestWorkMetadata(processingReservationRequest.id, {
+      sequence: nextWorkItem.sequence,
+      leaseTimeoutCount: nextWorkItem.leaseTimeoutCount,
+      transientFailureCount: nextWorkItem.transientFailureCount,
+      claimedBy: input.workerId,
+      claimToken: input.claimToken,
+      claimedAt: input.claimedAt,
+      claimExpiresAt: input.claimExpiresAt,
+      lastHeartbeatAt: input.claimedAt,
+    });
 
     return {
       reservationRequest: processingReservationRequest,
@@ -144,23 +118,14 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
     };
   }
 
-  async heartbeatClaimedReservationRequest(
-    input: HeartbeatClaimedReservationRequestInput,
-  ): Promise<boolean> {
-    const currentRequest = this.store.reservationRequestsById.get(
-      input.claimedWorkItem.reservationRequest.id,
-    );
+  async heartbeatClaimedReservationRequest(input: HeartbeatClaimedReservationRequestInput): Promise<boolean> {
+    const currentRequest = this.store.reservationRequestsById.get(input.claimedWorkItem.reservationRequest.id);
 
-    if (
-      currentRequest === undefined ||
-      currentRequest.status !== ReservationRequestStatus.PROCESSING
-    ) {
+    if (currentRequest === undefined || currentRequest.status !== ReservationRequestStatus.PROCESSING) {
       return false;
     }
 
-    const metadata = this.store.getReservationRequestWorkMetadata(
-      currentRequest.id,
-    );
+    const metadata = this.store.getReservationRequestWorkMetadata(currentRequest.id);
 
     if (
       metadata.claimedBy !== input.claimedWorkItem.claimedBy ||
@@ -202,9 +167,7 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
     readonly reservation: Reservation;
     readonly attempt: ConfirmedReservationRequestProcessingAttempt;
   }): Promise<ConfirmClaimedReservationRequestResult> {
-    const currentRequest = this.requireClaimedProcessingRequest(
-      input.claimedWorkItem,
-    );
+    const currentRequest = this.requireClaimedProcessingRequest(input.claimedWorkItem);
 
     if (this.store.reservationsById.has(input.reservation.id)) {
       throw new Error(`Reservation ${input.reservation.id} already exists`);
@@ -227,10 +190,7 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
         conflictingReservationId: conflict.id,
       };
 
-      this.store.reservationRequestsById.set(
-        rejectedRequest.id,
-        rejectedRequest,
-      );
+      this.store.reservationRequestsById.set(rejectedRequest.id, rejectedRequest);
       this.clearClaimMetadata(rejectedRequest.id);
       this.store.recordProcessingAttempt(rejectedAttempt);
 
@@ -243,10 +203,7 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
 
     const confirmedRequest = confirmReservationRequest(currentRequest);
     this.store.reservationsById.set(input.reservation.id, input.reservation);
-    this.store.reservationRequestsById.set(
-      confirmedRequest.id,
-      confirmedRequest,
-    );
+    this.store.reservationRequestsById.set(confirmedRequest.id, confirmedRequest);
     this.clearClaimMetadata(confirmedRequest.id);
     this.store.recordProcessingAttempt(input.attempt);
 
@@ -261,9 +218,7 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
     readonly reason: 'seat-conflict';
     readonly attempt: RejectedReservationRequestProcessingAttempt;
   }): Promise<ReservationRequest> {
-    const currentRequest = this.requireClaimedProcessingRequest(
-      input.claimedWorkItem,
-    );
+    const currentRequest = this.requireClaimedProcessingRequest(input.claimedWorkItem);
     // Short-term D5 behavior: reject the whole request on any seat conflict.
     // This keeps the processor contract small while we are still in memory.
     // Revisit before a user-facing production flow; partial acceptance or
@@ -281,18 +236,13 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
     readonly reason: 'unexpected-error';
     readonly attempt: FailedReservationRequestProcessingAttempt;
   }): Promise<ReservationRequest> {
-    const currentRequest = this.requireClaimedProcessingRequest(
-      input.claimedWorkItem,
-    );
+    const currentRequest = this.requireClaimedProcessingRequest(input.claimedWorkItem);
     const retryableRequest: ReservationRequest = {
       ...currentRequest,
       status: ReservationRequestStatus.REQUESTED,
     };
 
-    this.store.reservationRequestsById.set(
-      retryableRequest.id,
-      retryableRequest,
-    );
+    this.store.reservationRequestsById.set(retryableRequest.id, retryableRequest);
     this.incrementTransientFailureCount(retryableRequest.id);
     this.clearClaimMetadata(retryableRequest.id);
     this.store.recordProcessingAttempt(input.attempt);
@@ -305,9 +255,7 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
     readonly reason: 'unexpected-error';
     readonly attempt: FailedReservationRequestProcessingAttempt;
   }): Promise<ReservationRequest> {
-    const currentRequest = this.requireClaimedProcessingRequest(
-      input.claimedWorkItem,
-    );
+    const currentRequest = this.requireClaimedProcessingRequest(input.claimedWorkItem);
     const failedRequest = failReservationRequest(currentRequest);
     this.store.reservationRequestsById.set(failedRequest.id, failedRequest);
     this.incrementTransientFailureCount(failedRequest.id);
@@ -320,60 +268,36 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
   async findReservationRequestProcessingAttemptsByRequestId(
     reservationRequestId: ReservationRequestId,
   ): Promise<readonly ReservationRequestProcessingAttempt[]> {
-    return [
-      ...(this.store.processingAttemptsByReservationRequestId.get(
-        reservationRequestId,
-      ) ?? []),
-    ];
+    return [...(this.store.processingAttemptsByReservationRequestId.get(reservationRequestId) ?? [])];
   }
 
-  private requireClaimedProcessingRequest(
-    claimedWorkItem: ClaimedReservationRequest,
-  ): ReservationRequest {
-    const currentRequest = this.store.reservationRequestsById.get(
-      claimedWorkItem.reservationRequest.id,
-    );
+  private requireClaimedProcessingRequest(claimedWorkItem: ClaimedReservationRequest): ReservationRequest {
+    const currentRequest = this.store.reservationRequestsById.get(claimedWorkItem.reservationRequest.id);
 
     if (currentRequest === undefined) {
-      throw new Error(
-        `Claimed reservation request ${claimedWorkItem.reservationRequest.id} was not found`,
-      );
+      throw new Error(`Claimed reservation request ${claimedWorkItem.reservationRequest.id} was not found`);
     }
 
-    const storedSequence = this.store.getReservationRequestSequence(
-      claimedWorkItem.reservationRequest.id,
-    );
-    const metadata = this.store.getReservationRequestWorkMetadata(
-      claimedWorkItem.reservationRequest.id,
-    );
+    const storedSequence = this.store.getReservationRequestSequence(claimedWorkItem.reservationRequest.id);
+    const metadata = this.store.getReservationRequestWorkMetadata(claimedWorkItem.reservationRequest.id);
 
     if (storedSequence !== claimedWorkItem.sequence) {
-      throw new Error(
-        `Claimed reservation request ${claimedWorkItem.reservationRequest.id} sequence changed`,
-      );
+      throw new Error(`Claimed reservation request ${claimedWorkItem.reservationRequest.id} sequence changed`);
     }
 
-    if (
-      metadata.claimedBy !== claimedWorkItem.claimedBy ||
-      metadata.claimToken !== claimedWorkItem.claimToken
-    ) {
-      throw new Error(
-        `Claimed reservation request ${claimedWorkItem.reservationRequest.id} claim was lost`,
-      );
+    if (metadata.claimedBy !== claimedWorkItem.claimedBy || metadata.claimToken !== claimedWorkItem.claimToken) {
+      throw new Error(`Claimed reservation request ${claimedWorkItem.reservationRequest.id} claim was lost`);
     }
 
     if (currentRequest.status !== ReservationRequestStatus.PROCESSING) {
-      throw new Error(
-        `Claimed reservation request ${currentRequest.id} is ${currentRequest.status}, not PROCESSING`,
-      );
+      throw new Error(`Claimed reservation request ${currentRequest.id} is ${currentRequest.status}, not PROCESSING`);
     }
 
     return currentRequest;
   }
 
   private clearClaimMetadata(reservationRequestId: ReservationRequestId): void {
-    const metadata =
-      this.store.getReservationRequestWorkMetadata(reservationRequestId);
+    const metadata = this.store.getReservationRequestWorkMetadata(reservationRequestId);
 
     this.store.updateReservationRequestWorkMetadata(reservationRequestId, {
       sequence: metadata.sequence,
@@ -382,11 +306,8 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
     });
   }
 
-  private incrementTransientFailureCount(
-    reservationRequestId: ReservationRequestId,
-  ): void {
-    const metadata =
-      this.store.getReservationRequestWorkMetadata(reservationRequestId);
+  private incrementTransientFailureCount(reservationRequestId: ReservationRequestId): void {
+    const metadata = this.store.getReservationRequestWorkMetadata(reservationRequestId);
 
     this.store.updateReservationRequestWorkMetadata(reservationRequestId, {
       ...metadata,
@@ -394,14 +315,9 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
     });
   }
 
-  private failExpiredClaimAfterLeaseTimeoutBudget(
-    reservationRequest: ReservationRequest,
-    failedAt: string,
-  ): void {
+  private failExpiredClaimAfterLeaseTimeoutBudget(reservationRequest: ReservationRequest, failedAt: string): void {
     const failedRequest = failReservationRequest(reservationRequest);
-    const metadata = this.store.getReservationRequestWorkMetadata(
-      reservationRequest.id,
-    );
+    const metadata = this.store.getReservationRequestWorkMetadata(reservationRequest.id);
 
     this.store.reservationRequestsById.set(failedRequest.id, failedRequest);
     this.store.updateReservationRequestWorkMetadata(failedRequest.id, {
@@ -429,7 +345,6 @@ function isExpiredProcessingRequest(
 ): boolean {
   return (
     reservationRequest.status === ReservationRequestStatus.PROCESSING &&
-    (metadata.claimExpiresAt === undefined ||
-      new Date(metadata.claimExpiresAt).getTime() <= new Date(now).getTime())
+    (metadata.claimExpiresAt === undefined || new Date(metadata.claimExpiresAt).getTime() <= new Date(now).getTime())
   );
 }

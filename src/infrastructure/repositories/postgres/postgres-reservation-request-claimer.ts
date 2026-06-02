@@ -44,22 +44,16 @@ export class PostgresReservationRequestClaimer {
     input: ClaimNextPendingReservationRequestInput,
   ): Promise<ClaimedReservationRequest | null> {
     return this.database.transaction(async (trx) => {
-      const selectedReservationRequest =
-        await this.findNextClaimableReservationRequestRow(trx, input);
+      const selectedReservationRequest = await this.findNextClaimableReservationRequestRow(trx, input);
 
       if (selectedReservationRequest === undefined) {
         return null;
       }
 
       const processingStatus: string = ReservationRequestStatus.PROCESSING;
-      const isLeaseTimeoutReclaim =
-        selectedReservationRequest.status === processingStatus;
+      const isLeaseTimeoutReclaim = selectedReservationRequest.status === processingStatus;
 
-      if (
-        isLeaseTimeoutReclaim &&
-        Number(selectedReservationRequest.lease_timeout_count) >=
-          input.maxLeaseTimeouts
-      ) {
+      if (isLeaseTimeoutReclaim && Number(selectedReservationRequest.lease_timeout_count) >= input.maxLeaseTimeouts) {
         await this.requestStateStore.failExpiredClaimAfterLeaseTimeoutBudget(
           trx,
           selectedReservationRequest,
@@ -68,48 +62,28 @@ export class PostgresReservationRequestClaimer {
         return null;
       }
 
-      const updatedReservationRequest = await this.claimReservationRequestRow(
-        trx,
-        selectedReservationRequest,
-        input,
-        { incrementLeaseTimeoutCount: isLeaseTimeoutReclaim },
-      );
+      const updatedReservationRequest = await this.claimReservationRequestRow(trx, selectedReservationRequest, input, {
+        incrementLeaseTimeoutCount: isLeaseTimeoutReclaim,
+      });
 
       return {
         reservationRequest: toReservationRequest(
           updatedReservationRequest,
-          await findReservationRequestSeatIds(
-            trx,
-            updatedReservationRequest.id,
-          ),
+          await findReservationRequestSeatIds(trx, updatedReservationRequest.id),
         ),
-        sequence: toReservationRequestSequence(
-          updatedReservationRequest.sequence,
-        ),
+        sequence: toReservationRequestSequence(updatedReservationRequest.sequence),
         claimedBy: input.workerId,
         claimToken: input.claimToken,
-        claimedAt: toIsoString(
-          updatedReservationRequest.claimed_at ?? input.claimedAt,
-        ),
-        claimExpiresAt: toIsoString(
-          updatedReservationRequest.claim_expires_at ?? input.claimExpiresAt,
-        ),
-        leaseTimeoutCount: Number(
-          updatedReservationRequest.lease_timeout_count,
-        ),
-        transientFailureCount: Number(
-          updatedReservationRequest.transient_failure_count,
-        ),
+        claimedAt: toIsoString(updatedReservationRequest.claimed_at ?? input.claimedAt),
+        claimExpiresAt: toIsoString(updatedReservationRequest.claim_expires_at ?? input.claimExpiresAt),
+        leaseTimeoutCount: Number(updatedReservationRequest.lease_timeout_count),
+        transientFailureCount: Number(updatedReservationRequest.transient_failure_count),
       };
     });
   }
 
-  async heartbeatClaimedReservationRequest(
-    input: HeartbeatClaimedReservationRequestInput,
-  ): Promise<boolean> {
-    const updatedRows = await this.database<ReservationRequestRow>(
-      'reservation_requests',
-    )
+  async heartbeatClaimedReservationRequest(input: HeartbeatClaimedReservationRequestInput): Promise<boolean> {
+    const updatedRows = await this.database<ReservationRequestRow>('reservation_requests')
       .where({
         id: input.claimedWorkItem.reservationRequest.id,
         status: ReservationRequestStatus.PROCESSING,
@@ -144,11 +118,7 @@ export class PostgresReservationRequestClaimer {
           .where((requestedBuilder) => {
             requestedBuilder
               .where({ status: ReservationRequestStatus.REQUESTED })
-              .andWhere(
-                'transient_failure_count',
-                '<',
-                input.maxTransientFailures,
-              );
+              .andWhere('transient_failure_count', '<', input.maxTransientFailures);
           })
           .orWhere((expiredProcessingBuilder) => {
             expiredProcessingBuilder
@@ -186,16 +156,11 @@ export class PostgresReservationRequestClaimer {
         claimed_at: input.claimedAt,
         claim_expires_at: input.claimExpiresAt,
         last_heartbeat_at: input.claimedAt,
-        ...(options.incrementLeaseTimeoutCount
-          ? { lease_timeout_count: trx.raw('lease_timeout_count + 1') }
-          : {}),
+        ...(options.incrementLeaseTimeoutCount ? { lease_timeout_count: trx.raw('lease_timeout_count + 1') } : {}),
         updated_at: input.claimedAt,
       })
       .returning('*');
 
-    return requireSingleRow(
-      updatedRows,
-      `Reservation request ${row.id} was not claimed`,
-    );
+    return requireSingleRow(updatedRows, `Reservation request ${row.id} was not claimed`);
   }
 }

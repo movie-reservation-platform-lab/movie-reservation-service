@@ -9,10 +9,7 @@ interface PostgresErrorLike {
  * Postgres reports unique constraint failures with SQLSTATE `23505`. Supplying a
  * constraint name narrows the match to one specific database invariant.
  */
-export function isPostgresUniqueViolation(
-  error: unknown,
-  constraintName?: string,
-): boolean {
+export function isPostgresUniqueViolation(error: unknown, constraintName?: string): boolean {
   if (!isPostgresErrorLike(error) || error.code !== '23505') {
     return false;
   }

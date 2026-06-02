@@ -5,10 +5,7 @@ import type { Movie } from '../../../domain/movie-reservations/movie';
 import { createMovieId } from '../../../domain/movie-reservations/movie-id';
 import type { MovieProvider } from '../../../domain/movie-reservations/movie-provider';
 import { createMovieProviderId } from '../../../domain/movie-reservations/movie-provider-id';
-import {
-  createReservation,
-  type Reservation,
-} from '../../../domain/movie-reservations/reservation';
+import { createReservation, type Reservation } from '../../../domain/movie-reservations/reservation';
 import { createReservationId } from '../../../domain/movie-reservations/reservation-id';
 import type { ReservationRequest } from '../../../domain/movie-reservations/reservation-request';
 import { createReservationRequestId } from '../../../domain/movie-reservations/reservation-request-id';
@@ -74,48 +71,22 @@ export interface MovieReservationDemoData {
  * labels, and provider codes keep the sample data readable.
  */
 export function createMovieReservationDemoData(): MovieReservationDemoData {
-  const providerAurora = createMovieProviderId(
-    MOVIE_RESERVATION_DEMO_IDS.providers.aurora,
-  );
-  const providerRiverton = createMovieProviderId(
-    MOVIE_RESERVATION_DEMO_IDS.providers.riverton,
-  );
-  const auditoriumAuroraMain = createAuditoriumId(
-    MOVIE_RESERVATION_DEMO_IDS.auditoriums.auroraMain,
-  );
-  const auditoriumRivertonOne = createAuditoriumId(
-    MOVIE_RESERVATION_DEMO_IDS.auditoriums.rivertonOne,
-  );
-  const movieAuroraOne = createMovieId(
-    MOVIE_RESERVATION_DEMO_IDS.movies.auroraTypeSafeMatinee,
-  );
-  const movieAuroraTwo = createMovieId(
-    MOVIE_RESERVATION_DEMO_IDS.movies.auroraFargateAtMidnight,
-  );
-  const movieRivertonOne = createMovieId(
-    MOVIE_RESERVATION_DEMO_IDS.movies.rivertonLastDeployment,
-  );
-  const screeningAuroraOne = createScreeningId(
-    MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning,
-  );
-  const screeningAuroraTwo = createScreeningId(
-    MOVIE_RESERVATION_DEMO_IDS.screenings.auroraFargateAtMidnightAfternoon,
-  );
-  const screeningRivertonOne = createScreeningId(
-    MOVIE_RESERVATION_DEMO_IDS.screenings.rivertonLastDeploymentMorning,
-  );
+  const providerAurora = createMovieProviderId(MOVIE_RESERVATION_DEMO_IDS.providers.aurora);
+  const providerRiverton = createMovieProviderId(MOVIE_RESERVATION_DEMO_IDS.providers.riverton);
+  const auditoriumAuroraMain = createAuditoriumId(MOVIE_RESERVATION_DEMO_IDS.auditoriums.auroraMain);
+  const auditoriumRivertonOne = createAuditoriumId(MOVIE_RESERVATION_DEMO_IDS.auditoriums.rivertonOne);
+  const movieAuroraOne = createMovieId(MOVIE_RESERVATION_DEMO_IDS.movies.auroraTypeSafeMatinee);
+  const movieAuroraTwo = createMovieId(MOVIE_RESERVATION_DEMO_IDS.movies.auroraFargateAtMidnight);
+  const movieRivertonOne = createMovieId(MOVIE_RESERVATION_DEMO_IDS.movies.rivertonLastDeployment);
+  const screeningAuroraOne = createScreeningId(MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning);
+  const screeningAuroraTwo = createScreeningId(MOVIE_RESERVATION_DEMO_IDS.screenings.auroraFargateAtMidnightAfternoon);
+  const screeningRivertonOne = createScreeningId(MOVIE_RESERVATION_DEMO_IDS.screenings.rivertonLastDeploymentMorning);
   const seatAuroraA1 = createSeatId(MOVIE_RESERVATION_DEMO_IDS.seats.auroraA1);
   const seatAuroraA2 = createSeatId(MOVIE_RESERVATION_DEMO_IDS.seats.auroraA2);
   const seatAuroraA3 = createSeatId(MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3);
-  const seatRivertonB3 = createSeatId(
-    MOVIE_RESERVATION_DEMO_IDS.seats.rivertonB3,
-  );
-  const requestAuroraAda = createReservationRequestId(
-    MOVIE_RESERVATION_DEMO_IDS.reservationRequests.auroraAda,
-  );
-  const requestRivertonLinus = createReservationRequestId(
-    MOVIE_RESERVATION_DEMO_IDS.reservationRequests.rivertonLinus,
-  );
+  const seatRivertonB3 = createSeatId(MOVIE_RESERVATION_DEMO_IDS.seats.rivertonB3);
+  const requestAuroraAda = createReservationRequestId(MOVIE_RESERVATION_DEMO_IDS.reservationRequests.auroraAda);
+  const requestRivertonLinus = createReservationRequestId(MOVIE_RESERVATION_DEMO_IDS.reservationRequests.rivertonLinus);
 
   return {
     movieProviders: [
@@ -241,9 +212,7 @@ export function createMovieReservationDemoData(): MovieReservationDemoData {
     ],
     reservations: [
       createReservation({
-        id: createReservationId(
-          MOVIE_RESERVATION_DEMO_IDS.reservations.auroraAda,
-        ),
+        id: createReservationId(MOVIE_RESERVATION_DEMO_IDS.reservations.auroraAda),
         movieProviderId: providerAurora,
         reservationRequestId: requestAuroraAda,
         screeningId: screeningAuroraOne,
@@ -252,9 +221,7 @@ export function createMovieReservationDemoData(): MovieReservationDemoData {
         confirmedAt: '2026-06-01T09:05:00.000Z',
       }),
       createReservation({
-        id: createReservationId(
-          MOVIE_RESERVATION_DEMO_IDS.reservations.rivertonLinus,
-        ),
+        id: createReservationId(MOVIE_RESERVATION_DEMO_IDS.reservations.rivertonLinus),
         movieProviderId: providerRiverton,
         reservationRequestId: requestRivertonLinus,
         screeningId: screeningRivertonOne,
