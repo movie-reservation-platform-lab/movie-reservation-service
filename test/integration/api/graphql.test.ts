@@ -5,12 +5,18 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ReservationRequestProcessor } from '../../../src/application/movie-reservations/ports/reservation-request-processor';
 import { createApp } from '../../../src/app';
 import { RESERVATION_REQUEST_PROCESSOR } from '../../../src/di/movie-reservations/movie-reservation.tokens';
+import type { LogFields } from '../../../src/infrastructure/observability/application-logger';
 import type { GraphqlOperationLogger } from '../../../src/presentation/graphql/plugins/graphql-operation-logging.plugin';
 
+interface CapturedGraphqlLogEntry {
+  readonly event: string;
+  readonly fields?: LogFields;
+  readonly error?: unknown;
+}
+
 interface CapturedGraphqlLogMessages {
-  readonly logMessages: string[];
-  readonly errorMessages: string[];
-  readonly errorTraces: string[];
+  readonly logMessages: CapturedGraphqlLogEntry[];
+  readonly errorMessages: CapturedGraphqlLogEntry[];
 }
 
 describe('movie reservation GraphQL auth context with local-jwt auth', () => {
@@ -149,6 +155,25 @@ describe('movie reservation GraphQL auth context with local-fixed-user auth', ()
       userId: 'local-dev-user',
     });
   });
+
+  it('echoes correlation and request ids on GraphQL responses', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/graphql')
+      .set('X-Correlation-Id', 'graphql-correlation-id')
+      .set('X-Request-Id', 'graphql-request-id')
+      .send({
+        query: `{
+          me {
+            userId
+          }
+        }`,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.errors).toBeUndefined();
+    expect(response.headers['x-correlation-id']).toBe('graphql-correlation-id');
+    expect(response.headers['x-request-id']).toBe('graphql-request-id');
+  });
 });
 
 describe('movie reservation GraphQL operation logging', () => {
@@ -167,11 +192,6 @@ describe('movie reservation GraphQL operation logging', () => {
     await app.close();
   });
 
-  /**
-   * TODO: These assertions intentionally check formatted log strings, which is
-   * brittle and not production-shaped. Rework them during the observability
-   * deliverable when Pino/structured logging replaces ad hoc key-value strings.
-   */
   it('logs operation start and finish with request identity context', async () => {
     capturedLogs.clear();
 
@@ -187,17 +207,23 @@ describe('movie reservation GraphQL operation logging', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.errors).toBeUndefined();
-    expect(capturedLogs.logMessages).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('event=graphql.operation.start'),
-        expect.stringContaining('event=graphql.operation.finish'),
-      ]),
+    expect(capturedLogs.logMessages.map((entry) => entry.event)).toEqual(
+      expect.arrayContaining(['graphql.operation.start', 'graphql.operation.finish']),
     );
-    expect(capturedLogs.logMessages.join('\n')).toContain('operationName=CurrentUser');
-    expect(capturedLogs.logMessages.join('\n')).toContain('operationType=query');
-    expect(capturedLogs.logMessages.join('\n')).toContain('movieProviderCode=aurora-silver-maple');
-    expect(capturedLogs.logMessages.join('\n')).not.toContain('movieProviderId=11111111-1111-4111-8111-111111111111');
-    expect(capturedLogs.logMessages.join('\n')).toContain('userId=local-dev-user');
+
+    const startLog = requireCapturedLog(capturedLogs.logMessages, 'graphql.operation.start');
+
+    expect(startLog.fields).toMatchObject({
+      graphql_operation_name: 'CurrentUser',
+      graphql_operation_type: 'query',
+      business_operation: 'me',
+      movie_provider_code: 'aurora-silver-maple',
+      user_id: 'local-dev-user',
+    });
+    expect(startLog.fields).not.toHaveProperty('movie_provider_id');
+    expect(startLog.fields).not.toHaveProperty('request_id');
+    expect(startLog.fields).not.toHaveProperty('http_method');
+    expect(startLog.fields).not.toHaveProperty('http_route');
   });
 
   it('logs operation failure with GraphQL error details', async () => {
@@ -220,12 +246,17 @@ describe('movie reservation GraphQL operation logging', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data).toBeNull();
-    expect(capturedLogs.errorMessages.join('\n')).toContain('event=graphql.operation.failure');
-    expect(capturedLogs.errorMessages.join('\n')).toContain('operationName=DuplicateReservation');
-    expect(capturedLogs.errorMessages.join('\n')).toContain('errorCount=1');
-    expect(capturedLogs.errorMessages.join('\n')).toContain('errorTypes="Error"');
-    expect(capturedLogs.errorMessages.join('\n')).toContain('ReservationRequest cannot include duplicate seats');
-    expect(capturedLogs.errorTraces.join('\n')).toContain('Error: ReservationRequest cannot include duplicate seats');
+    const failureLog = requireCapturedLog(capturedLogs.errorMessages, 'graphql.operation.failure');
+
+    expect(failureLog.fields).toMatchObject({
+      graphql_operation_name: 'DuplicateReservation',
+      graphql_operation_type: 'mutation',
+      business_operation: 'requestReservation',
+      error_count: 1,
+      error_types: ['Error'],
+      error_messages: ['ReservationRequest cannot include duplicate seats'],
+    });
+    expect(failureLog.error).toBeInstanceOf(Error);
   });
 });
 
@@ -273,11 +304,12 @@ describe('movie reservation GraphQL operation logging with local-jwt auth', () =
     expect(response.status).toBe(200);
     expect(response.body.errors).toBeUndefined();
 
-    const startLog = capturedLogs.logMessages.find((message) => message.includes('event=graphql.operation.start'));
+    const startLog = requireCapturedLog(capturedLogs.logMessages, 'graphql.operation.start');
 
-    expect(startLog).toContain('movieProviderCode=aurora-silver-maple');
-    expect(startLog).toContain('userId=user-ada_movieProviderCode:forged');
-    expect(startLog).not.toContain('userId=user-ada\nmovieProviderCode=forged');
+    expect(startLog.fields).toMatchObject({
+      movie_provider_code: 'aurora-silver-maple',
+      user_id: 'user-ada_movieProviderCode:forged',
+    });
   });
 });
 
@@ -608,31 +640,49 @@ function createCapturedGraphqlLogger(): CapturedGraphqlLogMessages & {
   readonly logger: GraphqlOperationLogger;
   clear(): void;
 } {
-  const logMessages: string[] = [];
-  const errorMessages: string[] = [];
-  const errorTraces: string[] = [];
+  const logMessages: CapturedGraphqlLogEntry[] = [];
+  const errorMessages: CapturedGraphqlLogEntry[] = [];
 
   return {
     logMessages,
     errorMessages,
-    errorTraces,
     logger: {
-      log(message: string): void {
-        logMessages.push(message);
+      debug(event: string, fields?: LogFields): void {
+        logMessages.push(createCapturedLogEntry(event, fields));
       },
-      error(message: string, trace?: string): void {
-        errorMessages.push(message);
-        if (trace !== undefined) {
-          errorTraces.push(trace);
-        }
+      info(event: string, fields?: LogFields): void {
+        logMessages.push(createCapturedLogEntry(event, fields));
+      },
+      warn(event: string, fields?: LogFields): void {
+        logMessages.push(createCapturedLogEntry(event, fields));
+      },
+      error(event: string, fields?: LogFields, error?: unknown): void {
+        errorMessages.push(createCapturedLogEntry(event, fields, error));
       },
     },
     clear(): void {
       logMessages.length = 0;
       errorMessages.length = 0;
-      errorTraces.length = 0;
     },
   };
+}
+
+function createCapturedLogEntry(event: string, fields?: LogFields, error?: unknown): CapturedGraphqlLogEntry {
+  return {
+    event,
+    ...(fields === undefined ? {} : { fields }),
+    ...(error === undefined ? {} : { error }),
+  };
+}
+
+function requireCapturedLog(logs: readonly CapturedGraphqlLogEntry[], event: string): CapturedGraphqlLogEntry {
+  const log = logs.find((entry) => entry.event === event);
+
+  if (log === undefined) {
+    throw new Error(`Expected captured log event ${event}`);
+  }
+
+  return log;
 }
 
 function readCreatedReservationRequestId(body: unknown): string {

@@ -152,6 +152,33 @@ npm -w movie-reservation-service run db:migrate:status
 See [the runbook](../docs/operations/runbook.md#local-docker-compose-checks)
 for the operational checklist and reset notes.
 
+## Local Observability
+
+The service writes structured JSON logs to stdout and sends OpenTelemetry traces
+and metrics to an app-local collector. This keeps logs compatible with ECS and
+CloudWatch while still using OTel for traces and business metrics.
+
+Start the collector for host-run development:
+
+```bash
+docker compose --profile observability up -d otel-collector
+```
+
+Host-run env profiles send OTLP/HTTP to `http://localhost:14318`. In-Docker API
+profiles use `http://otel-collector:4318` instead. The app-local collector
+forwards traces and metrics to the external Grafana stack collector by default,
+and also exposes `http://localhost:18889/metrics` as a local debugging endpoint.
+
+Run the smoke check after the API and collector are up:
+
+```bash
+npm -w movie-reservation-service run smoke:observability
+```
+
+The full workflow, external Grafana stack stitching, Docker log labels, and
+frontend/load-balancer propagation contract are documented in
+[Local Observability Workflow](../docs/workflows/local-observability.md).
+
 ## E2E Tests
 
 The service has focused Postgres e2e tests under `test/e2e`. These tests prove

@@ -17,6 +17,7 @@ const runtimeEnvTemplateExpectations = [
     reservationWorkerMode: 'fake-in-process',
     host: '127.0.0.1',
     databaseHost: undefined,
+    otlpEndpoint: 'http://localhost:14318',
   },
   {
     relativePath: 'env_files/templates/local/local-jwt.env.template',
@@ -27,6 +28,7 @@ const runtimeEnvTemplateExpectations = [
     reservationWorkerMode: 'fake-in-process',
     host: '127.0.0.1',
     databaseHost: undefined,
+    otlpEndpoint: 'http://localhost:14318',
   },
   {
     relativePath: 'env_files/templates/local/local-postgres.env.template',
@@ -37,6 +39,7 @@ const runtimeEnvTemplateExpectations = [
     reservationWorkerMode: 'fake-in-process',
     host: '127.0.0.1',
     databaseHost: 'localhost:5432',
+    otlpEndpoint: 'http://localhost:14318',
   },
   {
     relativePath: 'env_files/templates/in-docker/local-fixed-user.env.template',
@@ -47,6 +50,7 @@ const runtimeEnvTemplateExpectations = [
     reservationWorkerMode: 'fake-in-process',
     host: '0.0.0.0',
     databaseHost: undefined,
+    otlpEndpoint: 'http://otel-collector:4318',
   },
   {
     relativePath: 'env_files/templates/in-docker/local-jwt.env.template',
@@ -57,6 +61,7 @@ const runtimeEnvTemplateExpectations = [
     reservationWorkerMode: 'fake-in-process',
     host: '0.0.0.0',
     databaseHost: undefined,
+    otlpEndpoint: 'http://otel-collector:4318',
   },
   {
     relativePath: 'env_files/templates/in-docker/local-postgres.env.template',
@@ -67,6 +72,7 @@ const runtimeEnvTemplateExpectations = [
     reservationWorkerMode: 'fake-in-process',
     host: '0.0.0.0',
     databaseHost: 'postgres:5432',
+    otlpEndpoint: 'http://otel-collector:4318',
   },
   {
     relativePath: 'env_files/templates/platform/production-oidc.env.template',
@@ -77,6 +83,7 @@ const runtimeEnvTemplateExpectations = [
     reservationWorkerMode: 'disabled',
     host: '0.0.0.0',
     databaseHost: undefined,
+    otlpEndpoint: undefined,
   },
 ] as const;
 
@@ -108,7 +115,7 @@ describe('committed service env profile templates', () => {
 
   it.each(runtimeEnvTemplateExpectations)(
     '%s parses to the expected runtime dependency modes',
-    ({ relativePath, authMode, persistenceMode, enableGraphiql, reservationWorkerMode, host }) => {
+    ({ relativePath, authMode, persistenceMode, enableGraphiql, reservationWorkerMode, host, otlpEndpoint }) => {
       const config = parseRuntimeEnvTemplate(relativePath);
 
       expect(config.AUTH_MODE).toBe(authMode);
@@ -116,6 +123,12 @@ describe('committed service env profile templates', () => {
       expect(config.ENABLE_GRAPHIQL).toBe(enableGraphiql);
       expect(config.RESERVATION_WORKER_MODE).toBe(reservationWorkerMode);
       expect(config.HOST).toBe(host);
+      expect(config.SERVICE_VERSION).toBe('0.1.0');
+      expect(config.OBSERVABILITY_ENABLED).toBe(true);
+      expect(config.OTEL_SERVICE_NAME).toBe('movie-reservation-service');
+      expect(config.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(otlpEndpoint);
+      expect(config.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/protobuf');
+      expect(config.OTEL_PROPAGATORS).toBe('tracecontext,baggage');
     },
   );
   it.each(runtimeEnvTemplateExpectations.filter((expectation) => expectation.databaseHost !== undefined))(
@@ -219,6 +232,21 @@ describe('parseConfig runtime and worker settings', () => {
     expect(config.RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS).toBe(10_000);
     expect(config.RESERVATION_WORKER_MAX_LEASE_TIMEOUTS).toBe(3);
     expect(config.RESERVATION_WORKER_MAX_TRANSIENT_FAILURES).toBe(3);
+  });
+
+  it('defaults observability off in tests and on in local runtime', () => {
+    const testConfig = parseConfig({
+      NODE_ENV: 'test',
+    });
+    const developmentConfig = parseConfig({
+      NODE_ENV: 'development',
+    });
+
+    expect(testConfig.OBSERVABILITY_ENABLED).toBe(false);
+    expect(developmentConfig.OBSERVABILITY_ENABLED).toBe(true);
+    expect(developmentConfig.OTEL_SERVICE_NAME).toBe('movie-reservation-service');
+    expect(developmentConfig.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/protobuf');
+    expect(developmentConfig.OTEL_PROPAGATORS).toBe('tracecontext,baggage');
   });
 
   it('accepts explicit fake worker settings', () => {

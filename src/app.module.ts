@@ -1,5 +1,5 @@
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
-import { type DynamicModule, Module } from '@nestjs/common';
+import { type DynamicModule, type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { GraphQLModule } from '@nestjs/graphql';
 
 import { generatedGraphqlSchemaPath } from './generated-graphql-schema';
@@ -12,6 +12,7 @@ import { MovieReservationsGraphqlModule } from './presentation/graphql/movie-res
 import type { GraphqlOperationLogger } from './presentation/graphql/plugins/graphql-operation-logging.plugin';
 import { createGraphqlOperationLoggingPlugin } from './presentation/graphql/plugins/graphql-operation-logging.plugin';
 import { HealthModule } from './presentation/http/health.module';
+import { RequestContextMiddleware } from './presentation/http/middleware/request-context.middleware';
 
 export interface AppModuleOptions extends AppCompositionOverrides {
   readonly graphqlOperationLogger?: GraphqlOperationLogger;
@@ -25,7 +26,7 @@ export interface AppModuleOptions extends AppCompositionOverrides {
  * endpoints, and feature modules while leaving business behavior inside the
  * application/domain layers.
  */
-export class AppModule {
+export class AppModule implements NestModule {
   static forRoot(options: AppModuleOptions = {}): DynamicModule {
     const appComposition = createAppComposition(options);
 
@@ -52,6 +53,10 @@ export class AppModule {
         MovieReservationsGraphqlModule.forRoot(appComposition.movieReservations),
       ],
     };
+  }
+
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestContextMiddleware).forRoutes('*');
   }
 }
 

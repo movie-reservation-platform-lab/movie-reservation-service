@@ -7,6 +7,7 @@ import type { Reservation } from '../../../domain/movie-reservations/reservation
 import type { ReservationId } from '../../../domain/movie-reservations/reservation-id';
 import type { ReservationRequest } from '../../../domain/movie-reservations/reservation-request';
 import type { ReservationRequestId } from '../../../domain/movie-reservations/reservation-request-id';
+import type { ReservationWorkObservabilityContext } from '../../../application/movie-reservations/ports/reservation-work-observability-context-provider';
 import type { Screening } from '../../../domain/movie-reservations/screening';
 import type { ScreeningId } from '../../../domain/movie-reservations/screening-id';
 import type { Seat } from '../../../domain/movie-reservations/seat';
@@ -119,8 +120,11 @@ export class InMemoryMovieReservationRepository implements MovieReservationRepos
     return this.store.reservationRequestsById.get(reservationRequestId) ?? null;
   }
 
-  async saveReservationRequest(reservationRequest: ReservationRequest): Promise<void> {
-    this.store.saveReservationRequest(reservationRequest);
+  async saveReservationRequest(
+    reservationRequest: ReservationRequest,
+    observabilityContext?: ReservationWorkObservabilityContext,
+  ): Promise<void> {
+    this.store.saveReservationRequest(reservationRequest, observabilityContext);
   }
 
   async findReservationById(reservationId: ReservationId): Promise<Reservation | null> {

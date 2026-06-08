@@ -164,6 +164,41 @@ describe('InMemoryReservationRequestWorkRepository', () => {
     });
   });
 
+  it('carries saved observability context into claimed async work', async () => {
+    const pendingRequest = createTestReservationRequest(
+      '99999999-9999-4999-8999-999999999924',
+      '99999999-9999-4999-8999-999999999903',
+    );
+    const store = new InMemoryMovieReservationStore({
+      movieProviders: [],
+      auditoriums: [],
+      movies: [],
+      screenings: [],
+      seats: [],
+      reservationRequests: [],
+      reservations: [],
+    });
+    const repository = new InMemoryMovieReservationRepository(store);
+    const workRepository = new InMemoryReservationRequestWorkRepository(store);
+    const observabilityContext = {
+      correlationId: 'correlation-123',
+      requestId: 'request-123',
+      traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+      tracestate: 'vendor=value',
+    };
+
+    await repository.saveReservationRequest(pendingRequest, observabilityContext);
+
+    await expect(
+      workRepository.claimNextPendingReservationRequest(createClaimInput('claim-with-context')),
+    ).resolves.toMatchObject({
+      reservationRequest: {
+        id: '99999999-9999-4999-8999-999999999924',
+      },
+      observabilityContext,
+    });
+  });
+
   it('heartbeats an owned claim and reclaims it only after the lease expires', async () => {
     const pendingRequest = createTestReservationRequest(
       '99999999-9999-4999-8999-999999999926',

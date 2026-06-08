@@ -1,4 +1,5 @@
 import type { ReservationRequestProcessingAttempt } from '../../../application/movie-reservations/reservation-request-processing-attempt';
+import type { ReservationWorkObservabilityContext } from '../../../application/movie-reservations/ports/reservation-work-observability-context-provider';
 import { ReservationRequestAlreadyExistsError } from '../../../application/movie-reservations/errors/reservation-request-already-exists-error';
 import type { Auditorium } from '../../../domain/movie-reservations/auditorium';
 import type { AuditoriumId } from '../../../domain/movie-reservations/auditorium-id';
@@ -33,6 +34,7 @@ export interface InMemoryMovieReservationStoreInput {
 
 export interface InMemoryReservationRequestWorkMetadata {
   readonly sequence: ReservationRequestSequence;
+  readonly observabilityContext?: ReservationWorkObservabilityContext;
   readonly leaseTimeoutCount: number;
   readonly transientFailureCount: number;
   readonly claimedBy?: string;
@@ -109,14 +111,20 @@ export class InMemoryMovieReservationStore {
     return new InMemoryMovieReservationStore(createInMemoryMovieReservationSeedData());
   }
 
-  saveReservationRequest(reservationRequest: ReservationRequest): void {
+  saveReservationRequest(
+    reservationRequest: ReservationRequest,
+    observabilityContext?: ReservationWorkObservabilityContext,
+  ): void {
     if (this.reservationRequestsById.has(reservationRequest.id)) {
       throw new ReservationRequestAlreadyExistsError(reservationRequest.id);
     }
 
+    const checkedObservabilityContext = observabilityContext === undefined ? {} : { observabilityContext };
+
     this.reservationRequestsById.set(reservationRequest.id, reservationRequest);
     this.reservationRequestWorkMetadataById.set(reservationRequest.id, {
       sequence: this.allocateReservationRequestSequence(),
+      ...checkedObservabilityContext,
       leaseTimeoutCount: 0,
       transientFailureCount: 0,
     });

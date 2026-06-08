@@ -2,6 +2,7 @@ import type { Knex } from 'knex';
 
 import { ReservationRequestAlreadyExistsError } from '../../../application/movie-reservations/errors/reservation-request-already-exists-error';
 import type { MovieReservationRepository } from '../../../application/movie-reservations/ports/movie-reservation-repository';
+import type { ReservationWorkObservabilityContext } from '../../../application/movie-reservations/ports/reservation-work-observability-context-provider';
 import type { Movie } from '../../../domain/movie-reservations/movie';
 import type { MovieId } from '../../../domain/movie-reservations/movie-id';
 import type { MovieProvider } from '../../../domain/movie-reservations/movie-provider';
@@ -177,7 +178,10 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
     return toReservationRequest(row, await this.findReservationRequestSeatIds(reservationRequestId));
   }
 
-  async saveReservationRequest(reservationRequest: ReservationRequest): Promise<void> {
+  async saveReservationRequest(
+    reservationRequest: ReservationRequest,
+    observabilityContext?: ReservationWorkObservabilityContext,
+  ): Promise<void> {
     try {
       await this.database.transaction(async (trx) => {
         const screeningRow = await this.requireScreeningRowForProvider(
@@ -193,6 +197,10 @@ export class PostgresMovieReservationRepository implements MovieReservationRepos
           screening_id: reservationRequest.screeningId,
           requested_by_user_id: reservationRequest.requestedByUserId,
           status: reservationRequest.status,
+          correlation_id: observabilityContext?.correlationId,
+          request_id: observabilityContext?.requestId,
+          traceparent: observabilityContext?.traceparent,
+          tracestate: observabilityContext?.tracestate,
           requested_at: now,
           updated_at: now,
         });

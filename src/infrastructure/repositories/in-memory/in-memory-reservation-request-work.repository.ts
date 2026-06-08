@@ -59,9 +59,12 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
 
       if (nextWorkItem === null || metadata.sequence < nextWorkItem.sequence) {
         const isLeaseTimeoutReclaim = isExpiredProcessingRequest(reservationRequest, metadata, input.claimedAt);
+        const observabilityContextField =
+          metadata.observabilityContext === undefined ? {} : { observabilityContext: metadata.observabilityContext };
 
         nextWorkItem = {
           reservationRequest,
+          ...observabilityContextField,
           sequence: metadata.sequence,
           claimedBy: input.workerId,
           claimToken: input.claimToken,
@@ -93,10 +96,15 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
       nextWorkItem.reservationRequest.status === ReservationRequestStatus.PROCESSING
         ? nextWorkItem.reservationRequest
         : startProcessingReservationRequest(nextWorkItem.reservationRequest);
+    const observabilityContextField =
+      nextWorkItem.observabilityContext === undefined
+        ? {}
+        : { observabilityContext: nextWorkItem.observabilityContext };
 
     this.store.reservationRequestsById.set(processingReservationRequest.id, processingReservationRequest);
     this.store.updateReservationRequestWorkMetadata(processingReservationRequest.id, {
       sequence: nextWorkItem.sequence,
+      ...observabilityContextField,
       leaseTimeoutCount: nextWorkItem.leaseTimeoutCount,
       transientFailureCount: nextWorkItem.transientFailureCount,
       claimedBy: input.workerId,
@@ -108,6 +116,7 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
 
     return {
       reservationRequest: processingReservationRequest,
+      ...observabilityContextField,
       sequence: nextWorkItem.sequence,
       claimedBy: input.workerId,
       claimToken: input.claimToken,
@@ -298,9 +307,12 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
 
   private clearClaimMetadata(reservationRequestId: ReservationRequestId): void {
     const metadata = this.store.getReservationRequestWorkMetadata(reservationRequestId);
+    const observabilityContextField =
+      metadata.observabilityContext === undefined ? {} : { observabilityContext: metadata.observabilityContext };
 
     this.store.updateReservationRequestWorkMetadata(reservationRequestId, {
       sequence: metadata.sequence,
+      ...observabilityContextField,
       leaseTimeoutCount: metadata.leaseTimeoutCount,
       transientFailureCount: metadata.transientFailureCount,
     });
@@ -318,10 +330,13 @@ export class InMemoryReservationRequestWorkRepository implements ReservationRequ
   private failExpiredClaimAfterLeaseTimeoutBudget(reservationRequest: ReservationRequest, failedAt: string): void {
     const failedRequest = failReservationRequest(reservationRequest);
     const metadata = this.store.getReservationRequestWorkMetadata(reservationRequest.id);
+    const observabilityContextField =
+      metadata.observabilityContext === undefined ? {} : { observabilityContext: metadata.observabilityContext };
 
     this.store.reservationRequestsById.set(failedRequest.id, failedRequest);
     this.store.updateReservationRequestWorkMetadata(failedRequest.id, {
       sequence: metadata.sequence,
+      ...observabilityContextField,
       leaseTimeoutCount: metadata.leaseTimeoutCount,
       transientFailureCount: metadata.transientFailureCount,
     });

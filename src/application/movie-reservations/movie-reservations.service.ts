@@ -10,8 +10,12 @@ import type { Screening } from '../../domain/movie-reservations/screening';
 import type { ScreeningId } from '../../domain/movie-reservations/screening-id';
 import type { Seat } from '../../domain/movie-reservations/seat';
 import type { SeatId } from '../../domain/movie-reservations/seat-id';
+import { EmptyReservationWorkObservabilityContextProvider } from './empty-reservation-work-observability-context-provider';
+import { NoopMovieReservationObservability } from './noop-movie-reservation-observability';
 import type { MovieReservationRepository } from './ports/movie-reservation-repository';
+import type { MovieReservationObservability } from './ports/movie-reservation-observability';
 import type { ReservationRequestIdGenerator } from './ports/reservation-request-id-generator';
+import type { ReservationWorkObservabilityContextProvider } from './ports/reservation-work-observability-context-provider';
 
 export interface RequestReservationInput {
   readonly screeningId: ScreeningId;
@@ -30,6 +34,8 @@ export class MovieReservationsService {
     private readonly repository: MovieReservationRepository,
     private readonly authorizationService: AuthorizationService,
     private readonly reservationRequestIdGenerator: ReservationRequestIdGenerator,
+    private readonly observabilityContextProvider: ReservationWorkObservabilityContextProvider = new EmptyReservationWorkObservabilityContextProvider(),
+    private readonly observability: MovieReservationObservability = new NoopMovieReservationObservability(),
   ) {}
 
   /**
@@ -93,7 +99,14 @@ export class MovieReservationsService {
       requestedByUserId: actor.userId,
     });
 
-    await this.repository.saveReservationRequest(reservationRequest);
+    await this.repository.saveReservationRequest(
+      reservationRequest,
+      this.observabilityContextProvider.getCurrentContext(),
+    );
+    this.observability.recordReservationRequestCreated({
+      businessOperation: 'requestReservation',
+      reservationRequestId: reservationRequest.id,
+    });
     return reservationRequest;
   }
 

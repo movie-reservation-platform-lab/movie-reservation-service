@@ -19,6 +19,7 @@ import { createScreeningId } from '../../../domain/movie-reservations/screening-
 import type { Seat } from '../../../domain/movie-reservations/seat';
 import { createSeatId, type SeatId } from '../../../domain/movie-reservations/seat-id';
 import type { ReservationRequestProcessingAttempt } from '../../../application/movie-reservations/reservation-request-processing-attempt';
+import type { ReservationWorkObservabilityContext } from '../../../application/movie-reservations/ports/reservation-work-observability-context-provider';
 
 export interface MovieProviderRow {
   readonly id: string;
@@ -74,6 +75,10 @@ export interface ReservationRequestRow {
   readonly transient_failure_count: number | string;
   readonly processed_at?: Date | string | null;
   readonly updated_at?: Date | string;
+  readonly correlation_id?: string | null;
+  readonly request_id?: string | null;
+  readonly traceparent?: string | null;
+  readonly tracestate?: string | null;
 }
 
 export interface ReservationRow {
@@ -168,6 +173,29 @@ export function toReservation(row: ReservationRow, seatIds: readonly SeatId[]): 
 
 export function toReservationRequestSequence(value: number | string): ReservationRequestSequence {
   return createReservationRequestSequence(Number(value));
+}
+
+export function toReservationWorkObservabilityContext(
+  row: ReservationRequestRow,
+): ReservationWorkObservabilityContext | undefined {
+  if (row.correlation_id === undefined || row.correlation_id === null) {
+    return undefined;
+  }
+
+  if (row.request_id === undefined || row.request_id === null) {
+    return undefined;
+  }
+
+  if (row.traceparent === undefined || row.traceparent === null) {
+    return undefined;
+  }
+
+  return {
+    correlationId: row.correlation_id,
+    requestId: row.request_id,
+    traceparent: row.traceparent,
+    ...(row.tracestate === undefined || row.tracestate === null ? {} : { tracestate: row.tracestate }),
+  };
 }
 
 export function toReservationRequestProcessingAttempt(

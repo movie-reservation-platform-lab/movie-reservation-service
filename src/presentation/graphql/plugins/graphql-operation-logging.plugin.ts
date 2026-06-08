@@ -1,32 +1,59 @@
 import type { ApolloServerPlugin } from '@apollo/server';
-import { Logger } from '@nestjs/common';
-import type { GraphQLError, OperationTypeNode } from 'graphql';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
+import { Kind, type GraphQLError, type OperationDefinitionNode, type OperationTypeNode } from 'graphql';
 
+import type { MovieReservationBusinessOperation } from '../../../application/movie-reservations/ports/movie-reservation-observability';
+import {
+  applicationLogger,
+  type ApplicationLogger,
+  type LogFields,
+} from '../../../infrastructure/observability/application-logger';
+import { enrichRequestContextWithGraphqlOperation } from '../../../infrastructure/observability/request-context';
+import { classifyDiagnosticException } from '../../../infrastructure/observability/metrics/diagnostic-exception-classification';
+import {
+  incrementGraphqlExceptionCount,
+  recordGraphqlOperationMetrics,
+  type GraphqlOperationOutcome,
+} from '../../../infrastructure/observability/metrics/graphql-operation-metrics';
 import type { MovieReservationGraphqlContext } from '../graphql-context';
 
-export interface GraphqlOperationLogger {
-  log(message: string): void;
-  error(message: string, trace?: string): void;
-}
+export type GraphqlOperationLogger = ApplicationLogger;
 
+/**
+ * Stable metadata attached to every GraphQL operation log, metric, and span.
+ *
+ * The values start with safe fallbacks because Apollo creates request state
+ * before it has resolved the concrete GraphQL operation.
+ */
 interface GraphqlOperationLogMetadata {
   readonly operationName: string;
   readonly operationType: OperationTypeNode | 'unknown';
+  readonly businessOperation: MovieReservationBusinessOperation;
   readonly movieProviderCode: string;
   readonly userId: string;
 }
 
+/**
+ * Mutable lifecycle state for one Apollo GraphQL request.
+ *
+ * Apollo exposes start, operation resolution, error, and response callbacks
+ * separately, so this object carries timing, span, and terminal-log guards
+ * across those callbacks.
+ */
 interface GraphqlOperationLogRequestState {
   readonly startedAt: bigint;
+  readonly span: ReturnType<ReturnType<typeof trace.getTracer>['startSpan']>;
   metadata: GraphqlOperationLogMetadata;
   operationStartLogged: boolean;
+  terminalLogWritten: boolean;
 }
 
-interface ScrubbedGraphqlErrorForLog {
-  readonly type: string;
-  readonly message: string;
-}
-
+/**
+ * Narrow response shape needed to inspect GraphQL execution errors.
+ *
+ * Apollo's concrete response type is wider than this plugin needs. This local
+ * shape keeps the error inspection dependency small and easy to fake in tests.
+ */
 interface GraphqlOperationResponse {
   readonly body: {
     readonly kind: string;
@@ -36,22 +63,20 @@ interface GraphqlOperationResponse {
   };
 }
 
+/** Placeholder used until Apollo resolves the operation name, or when the client omits one. */
 const anonymousOperationName = 'anonymous';
+const tracer = trace.getTracer('movie-reservation-service.graphql');
 
 /**
- * Apollo plugin for one-line GraphQL operation lifecycle logs.
+ * Apollo plugin for structured GraphQL operation observability.
  *
- * This lives at the GraphQL boundary instead of inside resolvers so one log
- * pair covers every operation consistently, including operations that return
- * GraphQL errors. The nested callbacks follow Apollo's plugin lifecycle API;
- * the logging decisions are delegated to named helpers below.
- *
- * For more information, see:
- * - https://www.apollographql.com/docs/apollo-server/integrations/plugins
- * - https://docs.nestjs.com/graphql/plugins
+ * Apollo gives us operation lifecycle callbacks after HTTP middleware and
+ * authentication have run. That makes this boundary the right place for
+ * GraphQL-specific facts such as operation name, operation type, top-level
+ * business operation, duration, and GraphQL errors.
  */
 export function createGraphqlOperationLoggingPlugin(
-  logger: GraphqlOperationLogger = new Logger('GraphQLOperation'),
+  logger: GraphqlOperationLogger = applicationLogger,
 ): ApolloServerPlugin<MovieReservationGraphqlContext> {
   return {
     async requestDidStart(requestContext) {
@@ -59,10 +84,21 @@ export function createGraphqlOperationLoggingPlugin(
 
       return {
         async didResolveOperation(resolvedOperationContext) {
-          logResolvedOperation(logger, state, {
-            operationName: resolvedOperationContext.operationName,
-            operationType: resolvedOperationContext.operation?.operation,
+          const businessOperation = resolveBusinessOperation(resolvedOperationContext.operation);
+
+          state.metadata = {
+            ...state.metadata,
+            operationName: resolvedOperationContext.operationName ?? anonymousOperationName,
+            operationType: resolvedOperationContext.operation?.operation ?? 'unknown',
+            businessOperation,
+          };
+          enrichRequestContextWithGraphqlOperation({
+            operationName: sanitizeLogToken(state.metadata.operationName),
+            operationType: sanitizeLogToken(state.metadata.operationType),
+            businessOperation: state.metadata.businessOperation,
           });
+          annotateSpan(state);
+          ensureOperationStartLogged(logger, state);
         },
 
         async didEncounterErrors(errorContext) {
@@ -70,54 +106,72 @@ export function createGraphqlOperationLoggingPlugin(
         },
 
         async willSendResponse(responseContext) {
-          logOperationFinish(logger, state, responseContext.response);
+          if (state.terminalLogWritten) {
+            return;
+          }
+
+          if (readResponseErrors(responseContext.response).length > 0) {
+            logOperationFailure(logger, state, []);
+            return;
+          }
+
+          logOperationFinish(logger, state);
         },
       };
     },
 
     async contextCreationDidFail({ error }) {
-      logContextCreationFailure(logger, error);
+      logger.error(
+        'graphql.context.failure',
+        { error_type: error.constructor.name, error_message: error.message },
+        error,
+      );
+      recordGraphqlOperationMetrics({
+        businessOperation: 'unknown',
+        operationType: 'unknown',
+        outcome: 'auth_error',
+        durationMs: 0,
+      });
     },
 
     async unexpectedErrorProcessingRequest({ error }) {
-      logUnexpectedRequestProcessingError(logger, error);
+      logger.error(
+        'graphql.operation.unexpected_error',
+        { error_type: error.constructor.name, error_message: error.message },
+        error,
+      );
+      recordGraphqlOperationMetrics({
+        businessOperation: 'unknown',
+        operationType: 'unknown',
+        outcome: 'unexpected_error',
+        durationMs: 0,
+      });
     },
   };
 }
 
 /**
- * Per-request logging state is initialized before Apollo has resolved the
- * operation name and operation type.
+ * Creates the per-request state before Apollo has parsed and resolved the operation.
+ *
+ * Only authenticated user/provider context is available at this point. Operation
+ * name, type, and business operation are filled in later by `didResolveOperation`.
  */
 function createRequestLogState(context: MovieReservationGraphqlContext): GraphqlOperationLogRequestState {
   return {
     startedAt: process.hrtime.bigint(),
+    span: tracer.startSpan('graphql.operation'),
     metadata: createInitialMetadata(context),
     operationStartLogged: false,
+    terminalLogWritten: false,
   };
 }
 
 /**
- * The start log is emitted after Apollo has resolved operation metadata.
- */
-function logResolvedOperation(
-  logger: GraphqlOperationLogger,
-  state: GraphqlOperationLogRequestState,
-  operation: {
-    readonly operationName: string | null | undefined;
-    readonly operationType: OperationTypeNode | undefined;
-  },
-): void {
-  state.metadata = {
-    ...state.metadata,
-    operationName: operation.operationName ?? anonymousOperationName,
-    operationType: operation.operationType ?? 'unknown',
-  };
-  ensureOperationStartLogged(logger, state);
-}
-
-/**
- * Failure logs include scrubbed GraphQL errors and any available stack traces.
+ * Writes the terminal failure log and metrics for an operation.
+ *
+ * This is used both when Apollo directly reports execution errors and when the
+ * final response contains errors but no earlier error callback produced the
+ * terminal log.
  */
 function logOperationFailure(
   logger: GraphqlOperationLogger,
@@ -125,41 +179,79 @@ function logOperationFailure(
   errors: readonly GraphQLError[],
 ): void {
   ensureOperationStartLogged(logger, state);
+  const durationMs = calculateDurationMs(state.startedAt);
+  const outcome = classifyGraphqlOutcome(errors);
+  const errorTypes = errors.map((error) => getGraphqlErrorType(error));
+  const errorMessages = errors.map((error) => error.message);
+
+  state.terminalLogWritten = true;
+  state.span.setStatus({
+    code: SpanStatusCode.ERROR,
+    message: errorMessages.join(' | ') || outcome,
+  });
+  state.span.setAttribute('graphql.error.count', errors.length);
+  state.span.end();
 
   logger.error(
-    formatOperationLog('graphql.operation.failure', state.metadata, {
-      durationMs: calculateDurationMs(state.startedAt),
-      errorCount: errors.length,
-      errors: errors.map(scrubGraphqlErrorForLog),
+    'graphql.operation.failure',
+    createOperationLogFields(state, {
+      duration_ms: durationMs,
+      outcome,
+      error_count: errors.length,
+      error_types: errorTypes,
+      error_messages: errorMessages,
     }),
-    createErrorTrace(errors),
+    errors[0]?.originalError ?? errors[0],
   );
-}
+  recordGraphqlOperationMetrics({
+    businessOperation: state.metadata.businessOperation,
+    operationType: state.metadata.operationType,
+    outcome,
+    durationMs,
+  });
 
-/**
- * Finish logs are skipped when the response already carries GraphQL errors.
- */
-function logOperationFinish(
-  logger: GraphqlOperationLogger,
-  state: GraphqlOperationLogRequestState,
-  response: GraphqlOperationResponse,
-): void {
-  if (readResponseErrors(response).length > 0) {
-    return;
+  for (const error of errors) {
+    incrementGraphqlExceptionCount({
+      businessOperation: state.metadata.businessOperation,
+      exceptionType: classifyDiagnosticException(error.originalError ?? error),
+    });
   }
-
-  ensureOperationStartLogged(logger, state);
-
-  logger.log(
-    formatOperationLog('graphql.operation.finish', state.metadata, {
-      durationMs: calculateDurationMs(state.startedAt),
-    }),
-  );
 }
 
 /**
- * A synthetic start log is emitted when Apollo fails before operation metadata
- * has been resolved.
+ * Writes the terminal success log and metrics for an operation.
+ *
+ * The span is ended here because Apollo's response callback is the first point
+ * where the plugin knows the operation completed successfully.
+ */
+function logOperationFinish(logger: GraphqlOperationLogger, state: GraphqlOperationLogRequestState): void {
+  ensureOperationStartLogged(logger, state);
+  const durationMs = calculateDurationMs(state.startedAt);
+
+  state.terminalLogWritten = true;
+  state.span.setStatus({ code: SpanStatusCode.OK });
+  state.span.end();
+
+  logger.info(
+    'graphql.operation.finish',
+    createOperationLogFields(state, {
+      duration_ms: durationMs,
+      outcome: 'success',
+    }),
+  );
+  recordGraphqlOperationMetrics({
+    businessOperation: state.metadata.businessOperation,
+    operationType: state.metadata.operationType,
+    outcome: 'success',
+    durationMs,
+  });
+}
+
+/**
+ * Emits exactly one operation-start log for the request.
+ *
+ * Failure can occur before the normal start point, so terminal log paths call
+ * this defensively to keep start and terminal events paired.
  */
 function ensureOperationStartLogged(logger: GraphqlOperationLogger, state: GraphqlOperationLogRequestState): void {
   if (state.operationStartLogged) {
@@ -167,83 +259,108 @@ function ensureOperationStartLogged(logger: GraphqlOperationLogger, state: Graph
   }
 
   state.operationStartLogged = true;
-  logger.log(formatOperationLog('graphql.operation.start', state.metadata));
+  logger.info('graphql.operation.start', createOperationLogFields(state));
 }
 
 /**
- * Context failures are logged separately because no authenticated actor may be
- * available yet.
- */
-function logContextCreationFailure(logger: GraphqlOperationLogger, error: Error): void {
-  logger.error(`event=graphql.context.failure error="${sanitizeLogValue(error.message)}"`, error.stack);
-}
-
-/**
- * Unexpected Apollo request-processing failures are logged outside the normal
- * operation lifecycle.
- */
-function logUnexpectedRequestProcessingError(logger: GraphqlOperationLogger, error: Error): void {
-  logger.error(`event=graphql.operation.unexpected_error error="${sanitizeLogValue(error.message)}"`, error.stack);
-}
-
-/**
- * Metadata available from the authenticated GraphQL context is captured first.
+ * Builds initial metadata from the authenticated GraphQL context.
+ *
+ * GraphQL operation details are unknown here, but auth middleware has already
+ * attached the actor and provider identity used for logs and metrics.
  */
 function createInitialMetadata(context: MovieReservationGraphqlContext): GraphqlOperationLogMetadata {
   return {
     operationName: anonymousOperationName,
     operationType: 'unknown',
+    businessOperation: 'unknown',
     movieProviderCode: context.authenticatedUser.movieProviderCode ?? 'unknown',
     userId: context.actor.userId,
   };
 }
 
 /**
- * A compact key-value log line is built for ingestion by plain log collectors.
+ * Creates the structured field payload shared by start, success, and failure logs.
+ *
+ * The caller's fields are applied last so terminal logs can add outcome,
+ * duration, and error details without duplicating the common metadata.
  */
-function formatOperationLog(
-  eventName: string,
-  metadata: GraphqlOperationLogMetadata,
-  outcome?: {
-    readonly durationMs: number;
-    readonly errorCount?: number;
-    readonly errors?: readonly ScrubbedGraphqlErrorForLog[];
-  },
-): string {
-  const parts = [
-    `event=${eventName}`,
-    `operationName=${sanitizeLogToken(metadata.operationName)}`,
-    `operationType=${sanitizeLogToken(metadata.operationType)}`,
-    `movieProviderCode=${sanitizeLogToken(metadata.movieProviderCode)}`,
-    `userId=${sanitizeLogToken(metadata.userId)}`,
-  ];
-
-  if (outcome !== undefined) {
-    parts.push(`durationMs=${outcome.durationMs.toFixed(2)}`);
-  }
-
-  if (outcome?.errorCount !== undefined) {
-    parts.push(`errorCount=${outcome.errorCount.toString()}`);
-  }
-
-  if (outcome?.errors !== undefined) {
-    parts.push(`errorTypes="${sanitizeLogValue(outcome.errors.map((error) => error.type).join(' | '))}"`);
-    parts.push(`errors="${sanitizeLogValue(outcome.errors.map((error) => error.message).join(' | '))}"`);
-  }
-
-  return parts.join(' ');
+function createOperationLogFields(state: GraphqlOperationLogRequestState, fields: LogFields = {}): LogFields {
+  return {
+    graphql_operation_name: sanitizeLogToken(state.metadata.operationName),
+    graphql_operation_type: sanitizeLogToken(state.metadata.operationType),
+    business_operation: state.metadata.businessOperation,
+    movie_provider_code: sanitizeLogToken(state.metadata.movieProviderCode),
+    user_id: sanitizeLogToken(state.metadata.userId),
+    ...fields,
+  };
 }
 
 /**
- * Monotonic elapsed time is calculated without relying on wall-clock time.
+ * Copies resolved operation metadata onto the manual GraphQL span.
+ *
+ * Auto-instrumentation creates lower-level spans, while this span gives the
+ * project a stable business-oriented grouping for operation-level telemetry.
  */
+function annotateSpan(state: GraphqlOperationLogRequestState): void {
+  state.span.setAttribute('graphql.operation.name', state.metadata.operationName);
+  state.span.setAttribute('graphql.operation.type', state.metadata.operationType);
+  state.span.setAttribute('business.operation', state.metadata.businessOperation);
+  state.span.setAttribute('movie.provider.code', state.metadata.movieProviderCode);
+  state.span.setAttribute('enduser.id', state.metadata.userId);
+}
+
+/**
+ * Maps the top-level GraphQL field to the bounded business operation name.
+ *
+ * This keeps metrics low-cardinality by recording known operation groups rather
+ * than arbitrary query text or nested selection details.
+ */
+function resolveBusinessOperation(operation: OperationDefinitionNode | undefined): MovieReservationBusinessOperation {
+  const knownOperations = new Set<MovieReservationBusinessOperation>([
+    'me',
+    'movies',
+    'screenings',
+    'requestReservation',
+    'reservationRequestStatus',
+    'reservationResult',
+  ]);
+  const fieldNames = operation?.selectionSet.selections.flatMap((selection) =>
+    selection.kind === Kind.FIELD ? [selection.name.value] : [],
+  );
+  const firstFieldName = fieldNames?.[0];
+
+  if (firstFieldName !== undefined && knownOperations.has(firstFieldName as MovieReservationBusinessOperation)) {
+    return firstFieldName as MovieReservationBusinessOperation;
+  }
+
+  return 'unknown';
+}
+
+/**
+ * Converts GraphQL execution errors into the metric outcome vocabulary.
+ *
+ * Authentication failures are tracked separately; other GraphQL execution
+ * failures are intentionally grouped together for low-cardinality metrics.
+ */
+function classifyGraphqlOutcome(errors: readonly GraphQLError[]): GraphqlOperationOutcome {
+  if (errors.some((error) => getGraphqlErrorType(error) === 'AuthenticationError')) {
+    return 'auth_error';
+  }
+
+  return errors.length === 0 ? 'graphql_error' : 'graphql_error';
+}
+
+/** Converts a high-resolution start timestamp into elapsed milliseconds. */
 function calculateDurationMs(startedAt: bigint): number {
   const elapsedNanoseconds = process.hrtime.bigint() - startedAt;
   return Number(elapsedNanoseconds) / 1_000_000;
 }
 
 /**
- * GraphQL errors are read from single-result responses only.
+ * Reads GraphQL errors from Apollo's single-result response shape.
+ *
+ * Incremental or multipart responses are not handled by this service yet, so
+ * non-single response bodies are treated as having no inspectable errors here.
  */
 function readResponseErrors(response: GraphqlOperationResponse): readonly unknown[] {
   if (response.body.kind !== 'single') {
@@ -253,48 +370,17 @@ function readResponseErrors(response: GraphqlOperationResponse): readonly unknow
   return response.body.singleResult?.errors ?? [];
 }
 
-/**
- * Available GraphQL and wrapped original-error stack traces are joined.
- */
-function createErrorTrace(errors: readonly GraphQLError[]): string | undefined {
-  const stackTraces = errors.flatMap((error) => {
-    if (error.stack !== undefined) {
-      return [error.stack];
-    }
-
-    const originalStack = error.originalError?.stack;
-    return originalStack === undefined ? [] : [originalStack];
-  });
-
-  return stackTraces.length === 0 ? undefined : stackTraces.join('\n');
-}
-
-/**
- * Error details are reduced to the fields intended for operation logs.
- */
-function scrubGraphqlErrorForLog(error: GraphQLError): ScrubbedGraphqlErrorForLog {
-  return {
-    type: getGraphqlErrorType(error),
-    // TODO: Replace this placeholder with production-safe message scrubbing
-    // before untrusted input or downstream errors can include sensitive values.
-    message: error.message,
-  };
-}
-
-/**
- * The original application error type is preferred when GraphQL wraps it.
- */
+/** Returns the application error class when Apollo wrapped an original error. */
 function getGraphqlErrorType(error: GraphQLError): string {
   return error.originalError?.constructor.name ?? error.constructor.name;
 }
 
 /**
- * Log values are kept on one line and quoted safely for the current format.
+ * Normalizes user-controlled tokens before placing them in structured logs.
+ *
+ * This keeps log fields single-line and avoids characters that commonly break
+ * simple log-query filters.
  */
-function sanitizeLogValue(value: string): string {
-  return value.replaceAll('"', "'").replaceAll('\n', ' ');
-}
-
 function sanitizeLogToken(value: string): string {
-  return sanitizeLogValue(value).replaceAll(/\s/g, '_').replaceAll('=', ':');
+  return value.replaceAll('"', "'").replaceAll('\n', ' ').replaceAll(/\s/g, '_').replaceAll('=', ':');
 }

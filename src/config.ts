@@ -47,6 +47,7 @@ const configSchema = z
     PORT: z.coerce.number().default(3000),
     HOST: z.string().min(1).default('127.0.0.1'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+    SERVICE_VERSION: z.string().min(1).default('0.1.0'),
     COMPOSITION_PROFILE: compositionProfileSchema.default('local-fixed-user'),
     DATABASE_URL: z.string().url().optional(),
     DATABASE_POOL_MIN: z.coerce.number().int().min(0).default(0),
@@ -58,6 +59,15 @@ const configSchema = z
     RESERVATION_WORKER_MAX_LEASE_TIMEOUTS: z.coerce.number().int().min(0).default(3),
     RESERVATION_WORKER_MAX_TRANSIENT_FAILURES: z.coerce.number().int().min(1).default(3),
     NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
+    OBSERVABILITY_ENABLED: z
+      .enum(['true', 'false'])
+      .transform((value) => value === 'true')
+      .optional(),
+    OTEL_SERVICE_NAME: z.string().min(1).default('movie-reservation-service'),
+    OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+    OTEL_EXPORTER_OTLP_PROTOCOL: z.enum(['http/protobuf', 'grpc']).default('http/protobuf'),
+    OTEL_PROPAGATORS: z.string().min(1).default('tracecontext,baggage'),
+    OTEL_RESOURCE_ATTRIBUTES: z.string().optional(),
     ENABLE_GRAPHIQL: z
       .enum(['true', 'false'])
       .transform((value) => value === 'true')
@@ -70,6 +80,7 @@ const configSchema = z
       PORT: value.PORT,
       HOST: value.HOST,
       LOG_LEVEL: value.LOG_LEVEL,
+      SERVICE_VERSION: value.SERVICE_VERSION,
       COMPOSITION_PROFILE: value.COMPOSITION_PROFILE,
       AUTH_MODE: profileModes.authMode,
       PERSISTENCE_MODE: profileModes.persistenceMode,
@@ -83,6 +94,12 @@ const configSchema = z
       RESERVATION_WORKER_MAX_LEASE_TIMEOUTS: value.RESERVATION_WORKER_MAX_LEASE_TIMEOUTS,
       RESERVATION_WORKER_MAX_TRANSIENT_FAILURES: value.RESERVATION_WORKER_MAX_TRANSIENT_FAILURES,
       NODE_ENV: value.NODE_ENV,
+      OBSERVABILITY_ENABLED: value.OBSERVABILITY_ENABLED,
+      OTEL_SERVICE_NAME: value.OTEL_SERVICE_NAME,
+      OTEL_EXPORTER_OTLP_ENDPOINT: value.OTEL_EXPORTER_OTLP_ENDPOINT,
+      OTEL_EXPORTER_OTLP_PROTOCOL: value.OTEL_EXPORTER_OTLP_PROTOCOL,
+      OTEL_PROPAGATORS: value.OTEL_PROPAGATORS,
+      OTEL_RESOURCE_ATTRIBUTES: value.OTEL_RESOURCE_ATTRIBUTES,
       ENABLE_GRAPHIQL: value.ENABLE_GRAPHIQL,
     };
   })
@@ -133,6 +150,7 @@ const configSchema = z
   .transform((value) => ({
     ...value,
     ENABLE_GRAPHIQL: value.ENABLE_GRAPHIQL ?? (value.NODE_ENV === 'development' || value.NODE_ENV === 'test'),
+    OBSERVABILITY_ENABLED: value.OBSERVABILITY_ENABLED ?? value.NODE_ENV !== 'test',
   }));
 
 /**

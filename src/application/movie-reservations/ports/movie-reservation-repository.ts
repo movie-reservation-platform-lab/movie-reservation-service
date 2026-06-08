@@ -10,6 +10,7 @@ import type { Screening } from '../../../domain/movie-reservations/screening';
 import type { ScreeningId } from '../../../domain/movie-reservations/screening-id';
 import type { Seat } from '../../../domain/movie-reservations/seat';
 import type { SeatId } from '../../../domain/movie-reservations/seat-id';
+import type { ReservationWorkObservabilityContext } from './reservation-work-observability-context-provider';
 
 /**
  * Persistence for movie reservations.
@@ -83,7 +84,10 @@ export interface MovieReservationRepository {
   /**
    * Persists a newly requested reservation request.
    */
-  saveReservationRequest(reservationRequest: ReservationRequest): Promise<void>;
+  saveReservationRequest(
+    reservationRequest: ReservationRequest,
+    observabilityContext?: ReservationWorkObservabilityContext,
+  ): Promise<void>;
 
   /**
    * Reads a confirmed reservation by reservation id.

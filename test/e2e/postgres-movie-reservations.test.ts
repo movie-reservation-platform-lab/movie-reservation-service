@@ -145,6 +145,43 @@ describe('Postgres-backed movie reservation workflow', () => {
 
   /**
    * Scenario:
+   * - Saves a reservation request through the customer-facing Postgres
+   *   repository with async observability handoff metadata.
+   * - Claims the same request through the worker-facing Postgres repository.
+   * - Verifies the persisted context is returned with the claimed work item so
+   *   the worker can continue trace/log correlation later.
+   */
+  it('persists observability context for claimed reservation work', async () => {
+    const repository = app.get<MovieReservationRepository>(MOVIE_RESERVATION_REPOSITORY);
+    const workRepository = app.get<ReservationRequestWorkRepository>(RESERVATION_REQUEST_WORK_REPOSITORY);
+    const reservationRequest = createReservationRequest({
+      id: createReservationRequestId('99999999-9999-4999-8999-999999999935'),
+      movieProviderId: createMovieProviderId(MOVIE_RESERVATION_DEMO_IDS.providers.aurora),
+      screeningId: createScreeningId(MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning),
+      seatIds: [createSeatId(MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3)],
+      requestedByUserId: createUserId('local-dev-user'),
+    });
+    const observabilityContext = {
+      correlationId: 'postgres-correlation-id',
+      requestId: 'postgres-request-id',
+      traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+      tracestate: 'vendor=value',
+    };
+
+    await repository.saveReservationRequest(reservationRequest, observabilityContext);
+
+    await expect(
+      workRepository.claimNextPendingReservationRequest(createClaimInput('claim-observability-context')),
+    ).resolves.toMatchObject({
+      reservationRequest: {
+        id: '99999999-9999-4999-8999-999999999935',
+      },
+      observabilityContext,
+    });
+  });
+
+  /**
+   * Scenario:
    * - Creates a reservation request through GraphQL.
    * - Uses a Nest app with the background worker disabled, so the test drives
    *   exactly one processor pass instead of racing the fake poll loop.

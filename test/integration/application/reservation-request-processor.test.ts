@@ -2,8 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { InProcessReservationRequestProcessor } from '../../../src/application/movie-reservations/in-process-reservation-request-processor';
 import type { Clock } from '../../../src/application/movie-reservations/ports/clock';
+import type {
+  MovieReservationObservability,
+  ReservationProcessorClaimedAttributes,
+  ReservationProcessorOutcomeAttributes,
+  ReservationProcessorSpanAttributes,
+} from '../../../src/application/movie-reservations/ports/movie-reservation-observability';
 import type { ReservationIdGenerator } from '../../../src/application/movie-reservations/ports/reservation-id-generator';
 import type { ReservationRequestWorkRepository } from '../../../src/application/movie-reservations/ports/reservation-request-work-repository';
+import type { ReservationWorkObservabilityContext } from '../../../src/application/movie-reservations/ports/reservation-work-observability-context-provider';
 import { createUserId } from '../../../src/domain/authentication/user-id';
 import { createMovieProviderId } from '../../../src/domain/movie-reservations/movie-provider-id';
 import { createReservation } from '../../../src/domain/movie-reservations/reservation';
@@ -133,6 +140,56 @@ describe('InProcessReservationRequestProcessor', () => {
     await expect(
       repository.findReservationById(createReservationId('99999999-9999-4999-8999-999999999917')),
     ).resolves.toBeNull();
+  });
+
+  it('passes persisted observability context to worker claim and outcome records', async () => {
+    const pendingRequest = createRequestedReservationRequest({
+      id: '99999999-9999-4999-8999-999999999920',
+      seatIds: ['99999999-9999-4999-8999-999999999903'],
+    });
+    const observabilityContext: ReservationWorkObservabilityContext = {
+      correlationId: 'booking-workflow-1',
+      requestId: 'booking-request-1',
+      traceparent: '00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01',
+    };
+    const store = createStore({ reservationRequests: [pendingRequest] });
+    const metadata = store.getReservationRequestWorkMetadata(pendingRequest.id);
+    store.updateReservationRequestWorkMetadata(pendingRequest.id, {
+      ...metadata,
+      observabilityContext,
+    });
+    const workRepository = new InMemoryReservationRequestWorkRepository(store);
+    const observability = new CapturingMovieReservationObservability();
+    const processor = createProcessor({
+      workRepository,
+      reservationIds: ['99999999-9999-4999-8999-999999999921'],
+      clockInstants: ['2026-06-01T09:00:00.000Z', '2026-06-01T09:00:01.000Z', '2026-06-01T09:00:02.000Z'],
+      observability,
+    });
+
+    await expect(processor.processNextPendingRequest()).resolves.toMatchObject({
+      outcome: 'confirmed',
+    });
+
+    expect(observability.claimedRecords).toEqual([
+      expect.objectContaining({
+        reservationRequestId: pendingRequest.id,
+        observabilityContext,
+      }),
+    ]);
+    expect(observability.processorSpanRecords).toEqual([
+      expect.objectContaining({
+        reservationRequestId: pendingRequest.id,
+        observabilityContext,
+      }),
+    ]);
+    expect(observability.outcomeRecords).toEqual([
+      expect.objectContaining({
+        outcome: 'confirmed',
+        reservationRequestId: pendingRequest.id,
+        observabilityContext,
+      }),
+    ]);
   });
 
   it('returns no-pending-request without recording an attempt when only terminal requests exist', async () => {
@@ -321,6 +378,7 @@ function createProcessor(input: {
   readonly reservationIds: readonly string[];
   readonly clockInstants: readonly string[];
   readonly maxTransientFailures?: number;
+  readonly observability?: MovieReservationObservability;
 }): InProcessReservationRequestProcessor {
   return new InProcessReservationRequestProcessor(
     input.workRepository,
@@ -333,6 +391,7 @@ function createProcessor(input: {
       maxTransientFailures: input.maxTransientFailures ?? 3,
       createClaimToken: () => 'test-claim-token',
     },
+    input.observability,
   );
 }
 
@@ -372,4 +431,30 @@ function createRequestedReservationRequest(input: {
     seatIds: input.seatIds.map(createSeatId),
     requestedByUserId: createUserId('user-1'),
   });
+}
+
+class CapturingMovieReservationObservability implements MovieReservationObservability {
+  readonly claimedRecords: ReservationProcessorClaimedAttributes[] = [];
+  readonly outcomeRecords: ReservationProcessorOutcomeAttributes[] = [];
+  readonly processorSpanRecords: ReservationProcessorSpanAttributes[] = [];
+
+  recordReservationRequestCreated(): void {}
+
+  async runWithReservationProcessorSpan<T>(
+    attributes: ReservationProcessorSpanAttributes,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.processorSpanRecords.push(attributes);
+    return operation();
+  }
+
+  recordReservationProcessorClaimed(attributes: ReservationProcessorClaimedAttributes): void {
+    this.claimedRecords.push(attributes);
+  }
+
+  recordReservationProcessorOutcome(attributes: ReservationProcessorOutcomeAttributes): void {
+    this.outcomeRecords.push(attributes);
+  }
+
+  recordReservationProcessorException(): void {}
 }

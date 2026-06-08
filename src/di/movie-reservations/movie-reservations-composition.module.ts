@@ -7,11 +7,13 @@ import { config, type AuthMode, type PersistenceMode, type ReservationWorkerMode
 import { createAuthenticationProviders } from './authentication.providers';
 import {
   CLOCK,
+  MOVIE_RESERVATION_OBSERVABILITY,
   MOVIE_RESERVATION_REPOSITORY,
   RESERVATION_ID_GENERATOR,
   RESERVATION_REQUEST_ID_GENERATOR,
   RESERVATION_REQUEST_PROCESSOR,
   RESERVATION_REQUEST_WORK_REPOSITORY,
+  RESERVATION_WORK_OBSERVABILITY_CONTEXT_PROVIDER,
 } from './movie-reservation.tokens';
 import { createPersistenceExports, createPersistenceProviders } from './persistence.providers';
 import { createReservationWorkerProviders } from './reservation-worker.providers';
@@ -67,8 +69,10 @@ function createExports(persistenceMode: PersistenceMode) {
     MOVIE_RESERVATION_REPOSITORY,
     MovieReservationsService,
     RESERVATION_ID_GENERATOR,
+    MOVIE_RESERVATION_OBSERVABILITY,
     RESERVATION_REQUEST_ID_GENERATOR,
     RESERVATION_REQUEST_PROCESSOR,
     RESERVATION_REQUEST_WORK_REPOSITORY,
+    RESERVATION_WORK_OBSERVABILITY_CONTEXT_PROVIDER,
   ];
 }

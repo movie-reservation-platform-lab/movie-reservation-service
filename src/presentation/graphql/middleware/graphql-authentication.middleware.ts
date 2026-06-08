@@ -4,6 +4,7 @@ import { createActorContext } from '../../../application/authentication/actor-co
 import { AuthenticationService } from '../../../application/authentication/authentication.service';
 import { config } from '../../../config';
 import { AuthenticationError } from '../../../domain/authentication/authentication-error';
+import { enrichRequestContextWithAuthenticatedUser } from '../../../infrastructure/observability/request-context';
 import { extractBearerToken } from '../bearer-token';
 import type { GraphqlHttpRequest } from '../graphql-context';
 
@@ -44,6 +45,7 @@ export class GraphqlAuthenticationMiddleware implements NestMiddleware {
     try {
       const token = extractBearerToken(req.headers);
       const authenticatedUser = await this.authenticationService.authenticateJwtToken(token);
+      enrichRequestContextWithAuthenticatedUser(authenticatedUser);
       req.authenticatedUser = authenticatedUser;
       req.actor = createActorContext(authenticatedUser);
       next();

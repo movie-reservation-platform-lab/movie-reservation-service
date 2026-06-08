@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
 import { createReservation } from '../../domain/movie-reservations/reservation';
+import type { ReservationId } from '../../domain/movie-reservations/reservation-id';
 import type { ClaimedReservationRequest } from './claimed-reservation-request';
+import { NoopMovieReservationObservability } from './noop-movie-reservation-observability';
 import type { Clock } from './ports/clock';
+import type {
+  MovieReservationObservability,
+  ReservationProcessorSpanAttributes,
+} from './ports/movie-reservation-observability';
 import type { ReservationIdGenerator } from './ports/reservation-id-generator';
 import type {
   ReservationRequestProcessor,
@@ -22,6 +28,30 @@ export interface InProcessReservationRequestProcessorOptions {
   readonly maxLeaseTimeouts: number;
   readonly maxTransientFailures: number;
   readonly createClaimToken?: () => string;
+}
+
+type UnexpectedFailureProcessingResult = Extract<
+  ReservationRequestProcessingResult,
+  { readonly outcome: 'retryable-failure' | 'failed' }
+>;
+
+type TerminalProcessingResult = Extract<
+  ReservationRequestProcessingResult,
+  { readonly outcome: 'confirmed' | 'rejected' }
+>;
+
+type RejectedProcessingResult = Extract<ReservationRequestProcessingResult, { readonly outcome: 'rejected' }>;
+
+type ProcessedWorkItemResult = Extract<
+  ReservationRequestProcessingResult,
+  { readonly outcome: 'confirmed' | 'rejected' | 'retryable-failure' | 'failed' }
+>;
+
+interface ClaimedWorkItemProcessingInput {
+  readonly claimedWorkItem: ClaimedReservationRequest;
+  readonly processorInput: ReservationRequestProcessingInput;
+  readonly startedAt: string;
+  readonly durationStartedAt: bigint;
 }
 
 const defaultProcessorOptions: InProcessReservationRequestProcessorOptions = {
@@ -48,11 +78,13 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
     private readonly reservationIdGenerator: ReservationIdGenerator,
     private readonly clock: Clock,
     private readonly options: InProcessReservationRequestProcessorOptions = defaultProcessorOptions,
+    private readonly observability: MovieReservationObservability = new NoopMovieReservationObservability(),
   ) {}
 
   async processNextPendingRequest(
     input: ReservationRequestProcessingInput = {},
   ): Promise<ReservationRequestProcessingResult> {
+    const durationStartedAt = process.hrtime.bigint();
     const startedAt = this.clock.nowIsoString();
     const claimedWorkItem = await this.workRepository.claimNextPendingReservationRequest({
       workerId: this.options.workerId,
@@ -64,10 +96,40 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
     });
 
     if (claimedWorkItem === null) {
+      this.observability.recordReservationProcessorOutcome({
+        outcome: 'no-pending-request',
+        durationMs: calculateDurationMs(durationStartedAt),
+      });
       return { outcome: 'no-pending-request' };
     }
 
-    input.onClaimed?.(claimedWorkItem);
+    return this.observability.runWithReservationProcessorSpan(
+      this.createReservationProcessorSpanAttributes(claimedWorkItem),
+      () =>
+        this.processClaimedWorkItem({
+          claimedWorkItem,
+          processorInput: input,
+          startedAt,
+          durationStartedAt,
+        }),
+    );
+  }
+
+  /**
+   * Runs the claimed request through the application workflow.
+   *
+   * `terminalStatePersisted` protects completed work from being released for a
+   * retry when a later side effect, such as observability, throws after the
+   * repository has already persisted CONFIRMED or REJECTED.
+   */
+  private async processClaimedWorkItem(
+    input: ClaimedWorkItemProcessingInput,
+  ): Promise<ReservationRequestProcessingResult> {
+    const { claimedWorkItem, processorInput, startedAt, durationStartedAt } = input;
+
+    this.recordClaimedWorkItem(claimedWorkItem);
+    processorInput.onClaimed?.(claimedWorkItem);
+
     let terminalStatePersisted = false;
 
     try {
@@ -77,76 +139,112 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
       });
 
       if (conflict !== null) {
-        const attempt: RejectedReservationRequestProcessingAttempt = {
-          reservationRequestId: claimedWorkItem.reservationRequest.id,
-          sequence: claimedWorkItem.sequence,
-          startedAt,
-          completedAt: this.clock.nowIsoString(),
-          outcome: 'rejected',
-          reason: 'seat-conflict',
-          conflictingReservationId: conflict.id,
-        };
-        const reservationRequest = await this.workRepository.rejectClaimedReservationRequest({
-          claimedWorkItem,
-          reason: 'seat-conflict',
-          attempt,
-        });
+        const rejectedResult = await this.rejectClaimedWorkItemForSeatConflict(claimedWorkItem, startedAt, conflict.id);
         terminalStatePersisted = true;
+        this.recordProcessorOutcome(rejectedResult, claimedWorkItem, durationStartedAt);
 
-        return {
-          outcome: 'rejected',
-          attempt,
-          reservationRequest,
-          reason: 'seat-conflict',
-        };
+        return rejectedResult;
       }
 
-      const reservation = createReservation({
-        id: this.reservationIdGenerator.generateReservationId(),
-        movieProviderId: claimedWorkItem.reservationRequest.movieProviderId,
-        reservationRequestId: claimedWorkItem.reservationRequest.id,
-        screeningId: claimedWorkItem.reservationRequest.screeningId,
-        seatIds: claimedWorkItem.reservationRequest.seatIds,
-        reservedByUserId: claimedWorkItem.reservationRequest.requestedByUserId,
-        confirmedAt: this.clock.nowIsoString(),
-      });
-      const attempt: ConfirmedReservationRequestProcessingAttempt = {
-        reservationRequestId: claimedWorkItem.reservationRequest.id,
-        sequence: claimedWorkItem.sequence,
-        startedAt,
-        completedAt: this.clock.nowIsoString(),
-        outcome: 'confirmed',
-        reservationId: reservation.id,
-      };
-      const confirmResult = await this.workRepository.confirmClaimedReservationRequest({
-        claimedWorkItem,
-        reservation,
-        attempt,
-      });
+      const terminalResult = await this.confirmClaimedWorkItem(claimedWorkItem, startedAt);
       terminalStatePersisted = true;
+      this.recordProcessorOutcome(terminalResult, claimedWorkItem, durationStartedAt);
 
-      if (confirmResult.outcome === 'rejected') {
-        return {
-          outcome: 'rejected',
-          attempt: confirmResult.attempt,
-          reservationRequest: confirmResult.reservationRequest,
-          reason: 'seat-conflict',
-        };
-      }
-
-      return {
-        outcome: 'confirmed',
-        attempt,
-        reservationRequest: confirmResult.reservationRequest,
-        reservation,
-      };
+      return terminalResult;
     } catch (error) {
       if (terminalStatePersisted) {
+        this.observability.recordReservationProcessorException(error);
         throw error;
       }
 
-      return this.handleUnexpectedFailure(claimedWorkItem, startedAt);
+      const failureResult = await this.handleUnexpectedFailure(claimedWorkItem, startedAt);
+      this.observability.recordReservationProcessorException(error);
+      this.recordProcessorOutcome(failureResult, claimedWorkItem, durationStartedAt);
+
+      return failureResult;
     }
+  }
+
+  /**
+   * Persists the terminal rejection path for a request that conflicts with an
+   * already-confirmed reservation.
+   */
+  private async rejectClaimedWorkItemForSeatConflict(
+    claimedWorkItem: ClaimedReservationRequest,
+    startedAt: string,
+    conflictingReservationId: ReservationId,
+  ): Promise<RejectedProcessingResult> {
+    const attempt: RejectedReservationRequestProcessingAttempt = {
+      reservationRequestId: claimedWorkItem.reservationRequest.id,
+      sequence: claimedWorkItem.sequence,
+      startedAt,
+      completedAt: this.clock.nowIsoString(),
+      outcome: 'rejected',
+      reason: 'seat-conflict',
+      conflictingReservationId,
+    };
+    const reservationRequest = await this.workRepository.rejectClaimedReservationRequest({
+      claimedWorkItem,
+      reason: 'seat-conflict',
+      attempt,
+    });
+
+    return {
+      outcome: 'rejected',
+      attempt,
+      reservationRequest,
+      reason: 'seat-conflict',
+    };
+  }
+
+  /**
+   * Attempts to confirm the claimed request.
+   *
+   * The repository may still return `rejected` here when a durable adapter
+   * detects a concurrent seat conflict during the transactional confirm step.
+   */
+  private async confirmClaimedWorkItem(
+    claimedWorkItem: ClaimedReservationRequest,
+    startedAt: string,
+  ): Promise<TerminalProcessingResult> {
+    const reservation = createReservation({
+      id: this.reservationIdGenerator.generateReservationId(),
+      movieProviderId: claimedWorkItem.reservationRequest.movieProviderId,
+      reservationRequestId: claimedWorkItem.reservationRequest.id,
+      screeningId: claimedWorkItem.reservationRequest.screeningId,
+      seatIds: claimedWorkItem.reservationRequest.seatIds,
+      reservedByUserId: claimedWorkItem.reservationRequest.requestedByUserId,
+      confirmedAt: this.clock.nowIsoString(),
+    });
+    const attempt: ConfirmedReservationRequestProcessingAttempt = {
+      reservationRequestId: claimedWorkItem.reservationRequest.id,
+      sequence: claimedWorkItem.sequence,
+      startedAt,
+      completedAt: this.clock.nowIsoString(),
+      outcome: 'confirmed',
+      reservationId: reservation.id,
+    };
+    const confirmResult = await this.workRepository.confirmClaimedReservationRequest({
+      claimedWorkItem,
+      reservation,
+      attempt,
+    });
+
+    if (confirmResult.outcome === 'rejected') {
+      return {
+        outcome: 'rejected',
+        attempt: confirmResult.attempt,
+        reservationRequest: confirmResult.reservationRequest,
+        reason: 'seat-conflict',
+      };
+    }
+
+    return {
+      outcome: 'confirmed',
+      attempt,
+      reservationRequest: confirmResult.reservationRequest,
+      reservation,
+    };
   }
 
   /**
@@ -163,7 +261,7 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
   private async handleUnexpectedFailure(
     claimedWorkItem: ClaimedReservationRequest,
     startedAt: string,
-  ): Promise<ReservationRequestProcessingResult> {
+  ): Promise<UnexpectedFailureProcessingResult> {
     const attempt: FailedReservationRequestProcessingAttempt = {
       reservationRequestId: claimedWorkItem.reservationRequest.id,
       sequence: claimedWorkItem.sequence,
@@ -204,8 +302,71 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
       reason: 'unexpected-error',
     };
   }
+
+  private recordClaimedWorkItem(claimedWorkItem: ClaimedReservationRequest): void {
+    this.observability.recordReservationProcessorClaimed(
+      this.createReservationProcessorSpanAttributes(claimedWorkItem),
+    );
+  }
+
+  /**
+   * Emits the shared completion event shape for terminal and unexpected failure
+   * outcomes.
+   */
+  private recordProcessorOutcome(
+    result: ProcessedWorkItemResult,
+    claimedWorkItem: ClaimedReservationRequest,
+    durationStartedAt: bigint,
+  ): void {
+    const baseAttributes = {
+      reservationRequestId: result.reservationRequest.id,
+      sequence: claimedWorkItem.sequence,
+      durationMs: calculateDurationMs(durationStartedAt),
+      ...this.createOptionalObservabilityContextAttributes(claimedWorkItem),
+    };
+
+    if (result.outcome === 'confirmed') {
+      this.observability.recordReservationProcessorOutcome({
+        ...baseAttributes,
+        outcome: result.outcome,
+      });
+      return;
+    }
+
+    this.observability.recordReservationProcessorOutcome({
+      ...baseAttributes,
+      outcome: result.outcome,
+      reason: result.reason,
+    });
+  }
+
+  /**
+   * Builds the common processor attributes used by both the span and the
+   * claimed-work log event.
+   */
+  private createReservationProcessorSpanAttributes(
+    claimedWorkItem: ClaimedReservationRequest,
+  ): ReservationProcessorSpanAttributes {
+    return {
+      reservationRequestId: claimedWorkItem.reservationRequest.id,
+      sequence: claimedWorkItem.sequence,
+      ...this.createOptionalObservabilityContextAttributes(claimedWorkItem),
+    };
+  }
+
+  private createOptionalObservabilityContextAttributes(
+    claimedWorkItem: ClaimedReservationRequest,
+  ): Pick<ReservationProcessorSpanAttributes, 'observabilityContext'> {
+    return claimedWorkItem.observabilityContext === undefined
+      ? {}
+      : { observabilityContext: claimedWorkItem.observabilityContext };
+  }
 }
 
 function addMilliseconds(isoString: string, milliseconds: number): string {
   return new Date(new Date(isoString).getTime() + milliseconds).toISOString();
+}
+
+function calculateDurationMs(startedAt: bigint): number {
+  return Number(process.hrtime.bigint() - startedAt) / 1_000_000;
 }
