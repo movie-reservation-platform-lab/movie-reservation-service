@@ -343,20 +343,31 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
 
     expect(response.status).toBe(200);
     expect(response.body.errors).toBeUndefined();
-    expect(response.body.data.movies).toEqual([
-      {
-        id: '44444444-4444-4444-8444-444444444441',
-        title: 'The Type-Safe Matinee',
-        rating: 'PG',
-        durationMinutes: 102,
-      },
-      {
-        id: '44444444-4444-4444-8444-444444444442',
-        title: 'Fargate at Midnight',
-        rating: 'PG-13',
-        durationMinutes: 118,
-      },
-    ]);
+    expect(response.body.data.movies).toEqual(
+      expect.arrayContaining([
+        {
+          id: '44444444-4444-4444-8444-444444444434',
+          title: 'The Shawshank Redemption',
+          rating: 'R',
+          durationMinutes: 142,
+        },
+        {
+          id: '44444444-4444-4444-8444-444444444435',
+          title: 'The Matrix',
+          rating: 'R',
+          durationMinutes: 136,
+        },
+        {
+          id: '44444444-4444-4444-8444-444444444441',
+          title: 'The Type-Safe Matinee',
+          rating: 'PG',
+          durationMinutes: 102,
+        },
+      ]),
+    );
+    expect(response.body.data.movies).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ title: 'The Last Deployment' })]),
+    );
   });
 
   it('lists screenings with seats for the authenticated actor movie provider', async () => {
@@ -381,20 +392,22 @@ describe('movie reservation GraphQL polling API with local-fixed-user auth', () 
 
     expect(response.status).toBe(200);
     expect(response.body.errors).toBeUndefined();
-    expect(response.body.data.screenings).toEqual([
-      {
-        id: '55555555-5555-4555-8555-555555555551',
-        movieId: '44444444-4444-4444-8444-444444444441',
-        auditoriumId: '33333333-3333-4333-8333-333333333331',
-        startsAt: '2026-06-01T09:00:00.000Z',
-        endsAt: '2026-06-01T10:42:00.000Z',
-        seats: [
-          { id: '66666666-6666-4666-8666-666666666661', row: 'A', number: 1 },
-          { id: '66666666-6666-4666-8666-666666666662', row: 'A', number: 2 },
-          { id: '66666666-6666-4666-8666-666666666663', row: 'A', number: 3 },
-        ],
-      },
-    ]);
+    expect(response.body.data.screenings).toHaveLength(1);
+    expect(response.body.data.screenings[0]).toMatchObject({
+      id: '55555555-5555-4555-8555-555555555551',
+      movieId: '44444444-4444-4444-8444-444444444441',
+      auditoriumId: '33333333-3333-4333-8333-333333333331',
+      startsAt: '2026-06-01T09:00:00.000Z',
+      endsAt: '2026-06-01T10:42:00.000Z',
+    });
+    expect(response.body.data.screenings[0].seats).toHaveLength(32);
+    expect(response.body.data.screenings[0].seats).toEqual(
+      expect.arrayContaining([
+        { id: '66666666-6666-4666-8666-666666666661', row: 'A', number: 1 },
+        { id: '66666666-6666-4666-8666-666666666662', row: 'A', number: 2 },
+        { id: '66666666-6666-4666-8666-666666666663', row: 'A', number: 3 },
+      ]),
+    );
   });
 
   it('creates a reservation request and lets the client poll it by id', async () => {

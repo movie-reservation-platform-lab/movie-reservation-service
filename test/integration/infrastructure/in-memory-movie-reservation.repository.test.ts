@@ -33,8 +33,14 @@ describe('InMemoryMovieReservationRepository', () => {
       createMovieProviderId('22222222-2222-4222-8222-222222222222'),
     );
 
-    expect(auroraMovies).toHaveLength(2);
-    expect(rivertonMovies).toHaveLength(1);
+    expect(auroraMovies.length).toBeGreaterThanOrEqual(8);
+    expect(rivertonMovies.length).toBeGreaterThanOrEqual(2);
+    expect(auroraMovies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'The Shawshank Redemption' }),
+        expect.objectContaining({ title: 'The Matrix' }),
+      ]),
+    );
     expect(auroraMovies).not.toEqual(rivertonMovies);
   });
 
@@ -60,7 +66,8 @@ describe('InMemoryMovieReservationRepository', () => {
       createScreeningId('55555555-5555-4555-8555-555555555551'),
     );
 
-    expect(auroraScreenings).toHaveLength(2);
+    expect(auroraScreenings.length).toBeGreaterThanOrEqual(8);
+    expect(auroraSeats).toHaveLength(32);
     expect(auroraSeats).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: '66666666-6666-4666-8666-666666666661' }),

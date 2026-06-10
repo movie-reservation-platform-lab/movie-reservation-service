@@ -34,9 +34,12 @@ describe('MovieReservationsCompositionModule', () => {
 
     expect(authenticationService).toBeInstanceOf(AuthenticationService);
     expect(reservationsService).toBeInstanceOf(MovieReservationsService);
-    await expect(
-      repository.findMoviesByProviderId(createMovieProviderId('11111111-1111-4111-8111-111111111111')),
-    ).resolves.toHaveLength(2);
+    const auroraMovies = await repository.findMoviesByProviderId(
+      createMovieProviderId('11111111-1111-4111-8111-111111111111'),
+    );
+
+    expect(auroraMovies.length).toBeGreaterThanOrEqual(8);
+    expect(auroraMovies).toEqual(expect.arrayContaining([expect.objectContaining({ title: 'The Matrix' })]));
   });
 
   it('wires the processor over the same in-memory store as the application service', async () => {

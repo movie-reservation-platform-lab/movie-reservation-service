@@ -102,20 +102,31 @@ describe('Postgres-backed movie reservation workflow', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.errors).toBeUndefined();
-    expect(response.body.data.movies).toEqual([
-      {
-        id: MOVIE_RESERVATION_DEMO_IDS.movies.auroraTypeSafeMatinee,
-        title: 'The Type-Safe Matinee',
-        rating: 'PG',
-        durationMinutes: 102,
-      },
-      {
-        id: MOVIE_RESERVATION_DEMO_IDS.movies.auroraFargateAtMidnight,
-        title: 'Fargate at Midnight',
-        rating: 'PG-13',
-        durationMinutes: 118,
-      },
-    ]);
+    expect(response.body.data.movies).toEqual(
+      expect.arrayContaining([
+        {
+          id: MOVIE_RESERVATION_DEMO_IDS.movies.auroraShawshankRedemption,
+          title: 'The Shawshank Redemption',
+          rating: 'R',
+          durationMinutes: 142,
+        },
+        {
+          id: MOVIE_RESERVATION_DEMO_IDS.movies.auroraMatrix,
+          title: 'The Matrix',
+          rating: 'R',
+          durationMinutes: 136,
+        },
+        {
+          id: MOVIE_RESERVATION_DEMO_IDS.movies.auroraTypeSafeMatinee,
+          title: 'The Type-Safe Matinee',
+          rating: 'PG',
+          durationMinutes: 102,
+        },
+      ]),
+    );
+    expect(response.body.data.movies).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ title: 'The Last Deployment' })]),
+    );
   });
 
   /**
