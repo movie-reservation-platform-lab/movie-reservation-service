@@ -3,7 +3,13 @@ import { type DynamicModule, Module, type Provider } from '@nestjs/common';
 import { AuthenticationService } from '../../application/authentication/authentication.service';
 import { AuthorizationService } from '../../application/authorization/authorization.service';
 import { MovieReservationsService } from '../../application/movie-reservations/movie-reservations.service';
-import { config, type AuthMode, type PersistenceMode, type ReservationWorkerMode } from '../../config';
+import {
+  config,
+  type AuthMode,
+  type PersistenceMode,
+  type ReservationFailureInjection,
+  type ReservationWorkerMode,
+} from '../../config';
 import { createAuthenticationProviders } from './authentication.providers';
 import {
   CLOCK,
@@ -16,6 +22,7 @@ import {
   RESERVATION_WORK_OBSERVABILITY_CONTEXT_PROVIDER,
 } from './movie-reservation.tokens';
 import { createPersistenceExports, createPersistenceProviders } from './persistence.providers';
+import { createReservationProcessingFailurePolicyProviders } from './reservation-processing-failure-policy.providers';
 import { createReservationWorkerProviders } from './reservation-worker.providers';
 import { createMovieReservationUseCaseProviders } from './use-case.providers';
 
@@ -23,6 +30,7 @@ export interface MovieReservationsCompositionOptions {
   readonly authMode: AuthMode;
   readonly persistenceMode?: PersistenceMode;
   readonly reservationWorkerMode?: ReservationWorkerMode;
+  readonly reservationFailureInjection?: ReservationFailureInjection;
 }
 
 /**
@@ -51,10 +59,12 @@ export class MovieReservationsCompositionModule {
 function createProviders(options: MovieReservationsCompositionOptions): Provider[] {
   const persistenceMode = options.persistenceMode ?? 'in-memory';
   const reservationWorkerMode = options.reservationWorkerMode ?? config.RESERVATION_WORKER_MODE;
+  const reservationFailureInjection = options.reservationFailureInjection ?? config.RESERVATION_FAILURE_INJECTION;
 
   return [
     ...createAuthenticationProviders(options.authMode),
     ...createPersistenceProviders(persistenceMode),
+    ...createReservationProcessingFailurePolicyProviders(reservationFailureInjection),
     ...createMovieReservationUseCaseProviders(),
     ...createReservationWorkerProviders(reservationWorkerMode),
   ];

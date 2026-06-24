@@ -5,6 +5,7 @@ import {
   type CompositionProfile,
   type Config,
   type PersistenceMode,
+  type ReservationFailureInjection,
   type ReservationWorkerMode,
 } from '../config';
 import type { MovieReservationsCompositionOptions } from './movie-reservations/movie-reservations-composition.module';
@@ -14,6 +15,7 @@ export interface AppCompositionOverrides {
   readonly authMode?: AuthMode;
   readonly persistenceMode?: PersistenceMode;
   readonly reservationWorkerMode?: ReservationWorkerMode;
+  readonly reservationFailureInjection?: ReservationFailureInjection;
 }
 
 export interface AppComposition {
@@ -22,7 +24,7 @@ export interface AppComposition {
 
 type RuntimeCompositionConfig = Pick<
   Config,
-  'COMPOSITION_PROFILE' | 'AUTH_MODE' | 'PERSISTENCE_MODE' | 'RESERVATION_WORKER_MODE'
+  'COMPOSITION_PROFILE' | 'AUTH_MODE' | 'PERSISTENCE_MODE' | 'RESERVATION_WORKER_MODE' | 'RESERVATION_FAILURE_INJECTION'
 >;
 
 export function createAppComposition(
@@ -37,12 +39,15 @@ export function createAppComposition(
   const selectedPersistenceMode =
     overrides.persistenceMode ?? (useProfileDefaults ? profileModes.persistenceMode : runtimeConfig.PERSISTENCE_MODE);
   const selectedReservationWorkerMode = overrides.reservationWorkerMode ?? runtimeConfig.RESERVATION_WORKER_MODE;
+  const selectedReservationFailureInjection =
+    overrides.reservationFailureInjection ?? runtimeConfig.RESERVATION_FAILURE_INJECTION;
 
   return {
     movieReservations: {
       authMode: selectedAuthMode,
       persistenceMode: selectedPersistenceMode,
       reservationWorkerMode: selectedReservationWorkerMode,
+      reservationFailureInjection: selectedReservationFailureInjection,
     },
   };
 }

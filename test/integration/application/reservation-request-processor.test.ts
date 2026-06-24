@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { DisabledReservationProcessingFailurePolicy } from '../../../src/application/movie-reservations/disabled-reservation-processing-failure-policy';
+import { SeatReservationCommitError } from '../../../src/application/movie-reservations/errors/seat-reservation-commit-error';
 import { InProcessReservationRequestProcessor } from '../../../src/application/movie-reservations/in-process-reservation-request-processor';
 import type { Clock } from '../../../src/application/movie-reservations/ports/clock';
 import type {
@@ -9,6 +11,7 @@ import type {
   ReservationProcessorSpanAttributes,
 } from '../../../src/application/movie-reservations/ports/movie-reservation-observability';
 import type { ReservationIdGenerator } from '../../../src/application/movie-reservations/ports/reservation-id-generator';
+import type { ReservationProcessingFailurePolicy } from '../../../src/application/movie-reservations/ports/reservation-processing-failure-policy';
 import type { ReservationRequestWorkRepository } from '../../../src/application/movie-reservations/ports/reservation-request-work-repository';
 import type { ReservationWorkObservabilityContext } from '../../../src/application/movie-reservations/ports/reservation-work-observability-context-provider';
 import { createUserId } from '../../../src/domain/authentication/user-id';
@@ -27,6 +30,7 @@ import {
 } from '../../../src/domain/movie-reservations/reservation-request-transitions';
 import { createScreeningId } from '../../../src/domain/movie-reservations/screening-id';
 import { createSeatId } from '../../../src/domain/movie-reservations/seat-id';
+import { StableRandomReservationProcessingFailurePolicy } from '../../../src/infrastructure/movie-reservations/stable-random-reservation-processing-failure-policy';
 import { InMemoryMovieReservationRepository } from '../../../src/infrastructure/repositories/in-memory/in-memory-movie-reservation.repository';
 import { InMemoryMovieReservationStore } from '../../../src/infrastructure/repositories/in-memory/in-memory-movie-reservation.store';
 import { InMemoryReservationRequestWorkRepository } from '../../../src/infrastructure/repositories/in-memory/in-memory-reservation-request-work.repository';
@@ -92,6 +96,29 @@ describe('InProcessReservationRequestProcessor', () => {
         sequence: 1,
       }),
     ]);
+  });
+
+  it('confirms normally when the reservation processing failure policy is disabled', async () => {
+    const pendingRequest = createRequestedReservationRequest({
+      id: '99999999-9999-4999-8999-999999999928',
+      seatIds: ['99999999-9999-4999-8999-999999999903'],
+    });
+    const store = createStore({ reservationRequests: [pendingRequest] });
+    const workRepository = new InMemoryReservationRequestWorkRepository(store);
+    const processor = createProcessor({
+      workRepository,
+      reservationIds: ['99999999-9999-4999-8999-999999999929'],
+      clockInstants: ['2026-06-01T09:00:00.000Z', '2026-06-01T09:00:01.000Z', '2026-06-01T09:00:02.000Z'],
+      failurePolicy: new DisabledReservationProcessingFailurePolicy(),
+    });
+
+    await expect(processor.processNextPendingRequest()).resolves.toMatchObject({
+      outcome: 'confirmed',
+      reservationRequest: {
+        id: pendingRequest.id,
+        status: ReservationRequestStatus.CONFIRMED,
+      },
+    });
   });
 
   it('rejects the whole claimed request when any requested seat conflicts', async () => {
@@ -217,6 +244,55 @@ describe('InProcessReservationRequestProcessor', () => {
         createReservationRequestId('99999999-9999-4999-8999-999999999918'),
       ),
     ).resolves.toEqual([]);
+  });
+
+  it('records a forced stable-random policy hit as an unexpected processor failure', async () => {
+    const pendingRequest = createRequestedReservationRequest({
+      id: '99999999-9999-4999-8999-999999999926',
+      seatIds: ['99999999-9999-4999-8999-999999999903'],
+    });
+    const store = createStore({ reservationRequests: [pendingRequest] });
+    const repository = new InMemoryMovieReservationRepository(store);
+    const workRepository = new InMemoryReservationRequestWorkRepository(store);
+    const observability = new CapturingMovieReservationObservability();
+    const processor = createProcessor({
+      workRepository,
+      reservationIds: [],
+      clockInstants: ['2026-06-01T09:00:00.000Z', '2026-06-01T09:00:01.000Z'],
+      maxTransientFailures: 1,
+      observability,
+      failurePolicy: new StableRandomReservationProcessingFailurePolicy({
+        failureRate: 1,
+        salt: 'demo-salt',
+      }),
+    });
+
+    const actualResult = await processor.processNextPendingRequest();
+
+    expect(actualResult).toMatchObject({
+      outcome: 'failed',
+      reason: 'unexpected-error',
+      reservationRequest: {
+        id: pendingRequest.id,
+        status: ReservationRequestStatus.FAILED,
+      },
+      attempt: {
+        reservationRequestId: pendingRequest.id,
+        sequence: 1,
+        outcome: 'failed',
+        reason: 'unexpected-error',
+      },
+    });
+    expect(observability.exceptionRecords).toHaveLength(1);
+    expect(observability.exceptionRecords[0]).toBeInstanceOf(SeatReservationCommitError);
+    expect(observability.outcomeRecords).toEqual([
+      expect.objectContaining({
+        outcome: 'failed',
+        reason: 'unexpected-error',
+        reservationRequestId: pendingRequest.id,
+      }),
+    ]);
+    await expect(repository.findReservationByReservationRequestId(pendingRequest.id)).resolves.toBeNull();
   });
 
   it('marks a claimed request as failed when the final attempt fails after claim', async () => {
@@ -379,6 +455,7 @@ function createProcessor(input: {
   readonly clockInstants: readonly string[];
   readonly maxTransientFailures?: number;
   readonly observability?: MovieReservationObservability;
+  readonly failurePolicy?: ReservationProcessingFailurePolicy;
 }): InProcessReservationRequestProcessor {
   return new InProcessReservationRequestProcessor(
     input.workRepository,
@@ -392,6 +469,7 @@ function createProcessor(input: {
       createClaimToken: () => 'test-claim-token',
     },
     input.observability,
+    input.failurePolicy,
   );
 }
 
@@ -437,6 +515,7 @@ class CapturingMovieReservationObservability implements MovieReservationObservab
   readonly claimedRecords: ReservationProcessorClaimedAttributes[] = [];
   readonly outcomeRecords: ReservationProcessorOutcomeAttributes[] = [];
   readonly processorSpanRecords: ReservationProcessorSpanAttributes[] = [];
+  readonly exceptionRecords: unknown[] = [];
 
   recordReservationRequestCreated(): void {}
 
@@ -456,5 +535,7 @@ class CapturingMovieReservationObservability implements MovieReservationObservab
     this.outcomeRecords.push(attributes);
   }
 
-  recordReservationProcessorException(): void {}
+  recordReservationProcessorException(error: unknown): void {
+    this.exceptionRecords.push(error);
+  }
 }

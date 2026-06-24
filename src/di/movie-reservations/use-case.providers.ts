@@ -7,6 +7,7 @@ import type { Clock } from '../../application/movie-reservations/ports/clock';
 import type { MovieReservationRepository } from '../../application/movie-reservations/ports/movie-reservation-repository';
 import type { MovieReservationObservability } from '../../application/movie-reservations/ports/movie-reservation-observability';
 import type { ReservationIdGenerator } from '../../application/movie-reservations/ports/reservation-id-generator';
+import type { ReservationProcessingFailurePolicy } from '../../application/movie-reservations/ports/reservation-processing-failure-policy';
 import type { ReservationRequestIdGenerator } from '../../application/movie-reservations/ports/reservation-request-id-generator';
 import type { ReservationRequestProcessor } from '../../application/movie-reservations/ports/reservation-request-processor';
 import type { ReservationRequestWorkRepository } from '../../application/movie-reservations/ports/reservation-request-work-repository';
@@ -22,6 +23,7 @@ import {
   MOVIE_RESERVATION_OBSERVABILITY,
   MOVIE_RESERVATION_REPOSITORY,
   RESERVATION_ID_GENERATOR,
+  RESERVATION_PROCESSING_FAILURE_POLICY,
   RESERVATION_REQUEST_ID_GENERATOR,
   RESERVATION_REQUEST_PROCESSOR,
   RESERVATION_REQUEST_WORK_REPOSITORY,
@@ -59,6 +61,7 @@ export function createMovieReservationUseCaseProviders(): Provider[] {
         reservationIdGenerator: ReservationIdGenerator,
         clock: Clock,
         observability: MovieReservationObservability,
+        failurePolicy: ReservationProcessingFailurePolicy,
       ): ReservationRequestProcessor =>
         new InProcessReservationRequestProcessor(
           workRepository,
@@ -71,8 +74,15 @@ export function createMovieReservationUseCaseProviders(): Provider[] {
             maxTransientFailures: config.RESERVATION_WORKER_MAX_TRANSIENT_FAILURES,
           },
           observability,
+          failurePolicy,
         ),
-      inject: [RESERVATION_REQUEST_WORK_REPOSITORY, RESERVATION_ID_GENERATOR, CLOCK, MOVIE_RESERVATION_OBSERVABILITY],
+      inject: [
+        RESERVATION_REQUEST_WORK_REPOSITORY,
+        RESERVATION_ID_GENERATOR,
+        CLOCK,
+        MOVIE_RESERVATION_OBSERVABILITY,
+        RESERVATION_PROCESSING_FAILURE_POLICY,
+      ],
     },
     {
       provide: MovieReservationsService,

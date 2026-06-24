@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { createReservation } from '../../domain/movie-reservations/reservation';
 import type { ReservationId } from '../../domain/movie-reservations/reservation-id';
 import type { ClaimedReservationRequest } from './claimed-reservation-request';
+import { DisabledReservationProcessingFailurePolicy } from './disabled-reservation-processing-failure-policy';
+import { SeatReservationCommitError } from './errors/seat-reservation-commit-error';
 import { NoopMovieReservationObservability } from './noop-movie-reservation-observability';
 import type { Clock } from './ports/clock';
 import type {
@@ -10,6 +12,7 @@ import type {
   ReservationProcessorSpanAttributes,
 } from './ports/movie-reservation-observability';
 import type { ReservationIdGenerator } from './ports/reservation-id-generator';
+import type { ReservationProcessingFailurePolicy } from './ports/reservation-processing-failure-policy';
 import type {
   ReservationRequestProcessor,
   ReservationRequestProcessingInput,
@@ -79,6 +82,7 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
     private readonly clock: Clock,
     private readonly options: InProcessReservationRequestProcessorOptions = defaultProcessorOptions,
     private readonly observability: MovieReservationObservability = new NoopMovieReservationObservability(),
+    private readonly failurePolicy: ReservationProcessingFailurePolicy = new DisabledReservationProcessingFailurePolicy(),
   ) {}
 
   async processNextPendingRequest(
@@ -146,6 +150,8 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
         return rejectedResult;
       }
 
+      this.throwIfFailurePolicyBlocksCommit(claimedWorkItem);
+
       const terminalResult = await this.confirmClaimedWorkItem(claimedWorkItem, startedAt);
       terminalStatePersisted = true;
       this.recordProcessorOutcome(terminalResult, claimedWorkItem, durationStartedAt);
@@ -162,6 +168,22 @@ export class InProcessReservationRequestProcessor implements ReservationRequestP
       this.recordProcessorOutcome(failureResult, claimedWorkItem, durationStartedAt);
 
       return failureResult;
+    }
+  }
+
+  /**
+   * Decides whether to simulate failure for the given request
+   *
+   * @param claimedWorkItem
+   * @private
+   */
+  private throwIfFailurePolicyBlocksCommit(claimedWorkItem: ClaimedReservationRequest): void {
+    if (
+      this.failurePolicy.shouldFailReservationProcessing({
+        reservationRequestId: claimedWorkItem.reservationRequest.id,
+      })
+    ) {
+      throw new SeatReservationCommitError();
     }
   }
 

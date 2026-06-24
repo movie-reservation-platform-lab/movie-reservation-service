@@ -1,18 +1,33 @@
 import { z } from 'zod';
 
 const reservationWorkerModeSchema = z.enum(['disabled', 'fake-in-process']);
+const reservationFailureInjectionModeSchema = z.enum(['disabled', 'stable-random-unexpected-error']);
 const compositionProfileSchema = z.enum(['local-fixed-user', 'local-jwt', 'local-postgres', 'production-oidc']);
 
 export type AuthMode = 'local-fixed-user' | 'local-jwt' | 'oidc';
 export type PersistenceMode = 'in-memory' | 'postgres';
 export type ReservationWorkerMode = z.infer<typeof reservationWorkerModeSchema>;
+export type ReservationFailureInjectionMode = z.infer<typeof reservationFailureInjectionModeSchema>;
 export type CompositionProfile = z.infer<typeof compositionProfileSchema>;
+
+export type ReservationFailureInjection =
+  | { readonly mode: Extract<ReservationFailureInjectionMode, 'disabled'> }
+  | {
+      readonly mode: Extract<ReservationFailureInjectionMode, 'stable-random-unexpected-error'>;
+      readonly failureRate: number;
+      readonly salt: string;
+    };
 
 export interface CompositionProfileDependencyModes {
   readonly authMode: AuthMode;
   readonly persistenceMode: PersistenceMode;
 }
 
+/**
+ * Composition profiles are finite convenience presets for the core dependency
+ * graph. They intentionally own auth and persistence only; orthogonal runtime
+ * toggles such as workers and failure injection stay separate.
+ */
 const compositionProfileDependencyModes = {
   'local-fixed-user': {
     authMode: 'local-fixed-user',
@@ -34,6 +49,30 @@ const compositionProfileDependencyModes = {
 
 export function getCompositionProfileDependencyModes(profile: CompositionProfile): CompositionProfileDependencyModes {
   return compositionProfileDependencyModes[profile];
+}
+
+interface ReservationFailureInjectionEnvSettings {
+  readonly RESERVATION_FAILURE_INJECTION_MODE: ReservationFailureInjectionMode;
+  readonly RESERVATION_FAILURE_INJECTION_RATE: number;
+  readonly RESERVATION_FAILURE_INJECTION_SALT: string | undefined;
+}
+
+function createReservationFailureInjection(
+  settings: ReservationFailureInjectionEnvSettings,
+): ReservationFailureInjection {
+  if (settings.RESERVATION_FAILURE_INJECTION_MODE === 'disabled') {
+    return { mode: 'disabled' };
+  }
+
+  if (settings.RESERVATION_FAILURE_INJECTION_SALT === undefined) {
+    throw new Error('RESERVATION_FAILURE_INJECTION_SALT is required when stable-random failure injection is enabled');
+  }
+
+  return {
+    mode: 'stable-random-unexpected-error',
+    failureRate: settings.RESERVATION_FAILURE_INJECTION_RATE,
+    salt: settings.RESERVATION_FAILURE_INJECTION_SALT,
+  };
 }
 
 /**
@@ -58,6 +97,9 @@ const configSchema = z
     RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(1).default(10_000),
     RESERVATION_WORKER_MAX_LEASE_TIMEOUTS: z.coerce.number().int().min(0).default(3),
     RESERVATION_WORKER_MAX_TRANSIENT_FAILURES: z.coerce.number().int().min(1).default(3),
+    RESERVATION_FAILURE_INJECTION_MODE: reservationFailureInjectionModeSchema.default('disabled'),
+    RESERVATION_FAILURE_INJECTION_RATE: z.coerce.number().min(0).max(1).default(0),
+    RESERVATION_FAILURE_INJECTION_SALT: z.string().min(1).optional(),
     NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
     OBSERVABILITY_ENABLED: z
       .enum(['true', 'false'])
@@ -93,6 +135,9 @@ const configSchema = z
       RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS: value.RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS,
       RESERVATION_WORKER_MAX_LEASE_TIMEOUTS: value.RESERVATION_WORKER_MAX_LEASE_TIMEOUTS,
       RESERVATION_WORKER_MAX_TRANSIENT_FAILURES: value.RESERVATION_WORKER_MAX_TRANSIENT_FAILURES,
+      RESERVATION_FAILURE_INJECTION_MODE: value.RESERVATION_FAILURE_INJECTION_MODE,
+      RESERVATION_FAILURE_INJECTION_RATE: value.RESERVATION_FAILURE_INJECTION_RATE,
+      RESERVATION_FAILURE_INJECTION_SALT: value.RESERVATION_FAILURE_INJECTION_SALT,
       NODE_ENV: value.NODE_ENV,
       OBSERVABILITY_ENABLED: value.OBSERVABILITY_ENABLED,
       OTEL_SERVICE_NAME: value.OTEL_SERVICE_NAME,
@@ -146,12 +191,54 @@ const configSchema = z
         message: 'RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS must be less than RESERVATION_WORKER_LEASE_MS',
       });
     }
+
+    if (value.RESERVATION_FAILURE_INJECTION_MODE === 'disabled' && value.RESERVATION_FAILURE_INJECTION_RATE > 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['RESERVATION_FAILURE_INJECTION_RATE'],
+        message:
+          'RESERVATION_FAILURE_INJECTION_RATE must be 0 unless RESERVATION_FAILURE_INJECTION_MODE is stable-random-unexpected-error',
+      });
+    }
+
+    if (value.RESERVATION_FAILURE_INJECTION_MODE === 'stable-random-unexpected-error') {
+      if (value.RESERVATION_FAILURE_INJECTION_RATE <= 0) {
+        context.addIssue({
+          code: 'custom',
+          path: ['RESERVATION_FAILURE_INJECTION_RATE'],
+          message:
+            'RESERVATION_FAILURE_INJECTION_RATE must be greater than 0 when stable-random failure injection is enabled',
+        });
+      }
+
+      if (value.RESERVATION_FAILURE_INJECTION_SALT === undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['RESERVATION_FAILURE_INJECTION_SALT'],
+          message: 'RESERVATION_FAILURE_INJECTION_SALT is required when stable-random failure injection is enabled',
+        });
+      }
+    }
   })
-  .transform((value) => ({
-    ...value,
-    ENABLE_GRAPHIQL: value.ENABLE_GRAPHIQL ?? (value.NODE_ENV === 'development' || value.NODE_ENV === 'test'),
-    OBSERVABILITY_ENABLED: value.OBSERVABILITY_ENABLED ?? value.NODE_ENV !== 'test',
-  }));
+  .transform((value) => {
+    const {
+      RESERVATION_FAILURE_INJECTION_MODE,
+      RESERVATION_FAILURE_INJECTION_RATE,
+      RESERVATION_FAILURE_INJECTION_SALT,
+      ...rest
+    } = value;
+
+    return {
+      ...rest,
+      RESERVATION_FAILURE_INJECTION: createReservationFailureInjection({
+        RESERVATION_FAILURE_INJECTION_MODE,
+        RESERVATION_FAILURE_INJECTION_RATE,
+        RESERVATION_FAILURE_INJECTION_SALT,
+      }),
+      ENABLE_GRAPHIQL: value.ENABLE_GRAPHIQL ?? (value.NODE_ENV === 'development' || value.NODE_ENV === 'test'),
+      OBSERVABILITY_ENABLED: value.OBSERVABILITY_ENABLED ?? value.NODE_ENV !== 'test',
+    };
+  });
 
 /**
  * Parses and validates config (like building a Pydantic model instance).

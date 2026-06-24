@@ -1,6 +1,7 @@
 export type DiagnosticExceptionType =
   | 'AuthenticationError'
   | 'ReservationRequestAlreadyExistsError'
+  | 'SeatReservationCommitError'
   | 'Error'
   | 'unexpected_error';
 
@@ -15,6 +16,7 @@ export function classifyDiagnosticException(error: unknown): DiagnosticException
   if (
     error.constructor.name === 'AuthenticationError' ||
     error.constructor.name === 'ReservationRequestAlreadyExistsError' ||
+    error.constructor.name === 'SeatReservationCommitError' ||
     error.constructor.name === 'Error'
   ) {
     return error.constructor.name;

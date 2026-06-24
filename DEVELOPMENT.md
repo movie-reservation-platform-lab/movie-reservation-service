@@ -125,6 +125,29 @@ the request deterministically. It is intentionally not the long-term separate
 worker/service design. The retry model is documented in
 [the architecture decisions](../docs/architecture/architecture-decisions.md#adr-013-split-reservation-worker-retry-budgets-by-failure-type).
 
+### Local Failure Injection
+
+Reservation processor failure injection is disabled by default:
+
+```env
+RESERVATION_FAILURE_INJECTION_MODE=disabled
+RESERVATION_FAILURE_INJECTION_RATE=0
+```
+
+For a controlled on-call demo, enable stable request-id-based failures:
+
+```env
+RESERVATION_FAILURE_INJECTION_MODE=stable-random-unexpected-error
+RESERVATION_FAILURE_INJECTION_RATE=0.4
+RESERVATION_FAILURE_INJECTION_SALT=local-demo-salt
+```
+
+The salt and reservation request id are hashed together, so a given request
+keeps the same pass/fail decision across retries. When the policy fires, the
+processor raises `SeatReservationCommitError`; the persisted request failure
+reason remains the existing `unexpected-error` bucket, so no database migration
+is required.
+
 Check migration status:
 
 ```bash

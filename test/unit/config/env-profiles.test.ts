@@ -113,6 +113,14 @@ describe('committed service env profile templates', () => {
     },
   );
 
+  it.each(runtimeEnvTemplateExpectations)('%s keeps failure injection explicitly disabled', ({ relativePath }) => {
+    const profile = readEnvProfile(relativePath);
+
+    expect(profile.RESERVATION_FAILURE_INJECTION_MODE).toBe('disabled');
+    expect(profile.RESERVATION_FAILURE_INJECTION_RATE).toBe('0');
+    expect(profile.RESERVATION_FAILURE_INJECTION_SALT).toBeUndefined();
+  });
+
   it.each(runtimeEnvTemplateExpectations)(
     '%s parses to the expected runtime dependency modes',
     ({ relativePath, authMode, persistenceMode, enableGraphiql, reservationWorkerMode, host, otlpEndpoint }) => {
@@ -129,6 +137,7 @@ describe('committed service env profile templates', () => {
       expect(config.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(otlpEndpoint);
       expect(config.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/protobuf');
       expect(config.OTEL_PROPAGATORS).toBe('tracecontext,baggage');
+      expect(config.RESERVATION_FAILURE_INJECTION).toEqual({ mode: 'disabled' });
     },
   );
   it.each(runtimeEnvTemplateExpectations.filter((expectation) => expectation.databaseHost !== undefined))(
@@ -232,6 +241,7 @@ describe('parseConfig runtime and worker settings', () => {
     expect(config.RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS).toBe(10_000);
     expect(config.RESERVATION_WORKER_MAX_LEASE_TIMEOUTS).toBe(3);
     expect(config.RESERVATION_WORKER_MAX_TRANSIENT_FAILURES).toBe(3);
+    expect(config.RESERVATION_FAILURE_INJECTION).toEqual({ mode: 'disabled' });
   });
 
   it('defaults observability off in tests and on in local runtime', () => {
@@ -288,6 +298,54 @@ describe('parseConfig runtime and worker settings', () => {
       }),
     ).toThrow('RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS must be less than RESERVATION_WORKER_LEASE_MS');
   });
+
+  it('accepts explicit stable-random failure injection settings', () => {
+    const config = parseConfig({
+      NODE_ENV: 'test',
+      RESERVATION_FAILURE_INJECTION_MODE: 'stable-random-unexpected-error',
+      RESERVATION_FAILURE_INJECTION_RATE: '0.4',
+      RESERVATION_FAILURE_INJECTION_SALT: 'demo-salt',
+    });
+
+    expect(config.RESERVATION_FAILURE_INJECTION).toEqual({
+      mode: 'stable-random-unexpected-error',
+      failureRate: 0.4,
+      salt: 'demo-salt',
+    });
+  });
+
+  it('rejects a failure injection rate when the mode is disabled', () => {
+    expect(() =>
+      parseConfig({
+        NODE_ENV: 'test',
+        RESERVATION_FAILURE_INJECTION_MODE: 'disabled',
+        RESERVATION_FAILURE_INJECTION_RATE: '0.4',
+      }),
+    ).toThrow(
+      'RESERVATION_FAILURE_INJECTION_RATE must be 0 unless RESERVATION_FAILURE_INJECTION_MODE is stable-random-unexpected-error',
+    );
+  });
+
+  it('requires a positive rate and salt for stable-random failure injection', () => {
+    expect(() =>
+      parseConfig({
+        NODE_ENV: 'test',
+        RESERVATION_FAILURE_INJECTION_MODE: 'stable-random-unexpected-error',
+        RESERVATION_FAILURE_INJECTION_RATE: '0',
+        RESERVATION_FAILURE_INJECTION_SALT: 'demo-salt',
+      }),
+    ).toThrow(
+      'RESERVATION_FAILURE_INJECTION_RATE must be greater than 0 when stable-random failure injection is enabled',
+    );
+
+    expect(() =>
+      parseConfig({
+        NODE_ENV: 'test',
+        RESERVATION_FAILURE_INJECTION_MODE: 'stable-random-unexpected-error',
+        RESERVATION_FAILURE_INJECTION_RATE: '0.4',
+      }),
+    ).toThrow('RESERVATION_FAILURE_INJECTION_SALT is required when stable-random failure injection is enabled');
+  });
 });
 
 describe('app composition mapping', () => {
@@ -299,6 +357,7 @@ describe('app composition mapping', () => {
         AUTH_MODE: 'local-fixed-user',
         PERSISTENCE_MODE: 'in-memory',
         RESERVATION_WORKER_MODE: 'disabled',
+        RESERVATION_FAILURE_INJECTION: { mode: 'disabled' },
       },
     );
 
@@ -306,6 +365,7 @@ describe('app composition mapping', () => {
       authMode: 'local-jwt',
       persistenceMode: 'in-memory',
       reservationWorkerMode: 'disabled',
+      reservationFailureInjection: { mode: 'disabled' },
     });
   });
 
@@ -317,6 +377,7 @@ describe('app composition mapping', () => {
         AUTH_MODE: 'local-fixed-user',
         PERSISTENCE_MODE: 'in-memory',
         RESERVATION_WORKER_MODE: 'disabled',
+        RESERVATION_FAILURE_INJECTION: { mode: 'disabled' },
       },
     );
 
@@ -324,6 +385,30 @@ describe('app composition mapping', () => {
       authMode: 'local-fixed-user',
       persistenceMode: 'in-memory',
       reservationWorkerMode: 'fake-in-process',
+      reservationFailureInjection: { mode: 'disabled' },
+    });
+  });
+
+  it('maps failure injection settings to movie reservation composition options', () => {
+    const composition = createAppComposition(
+      {},
+      {
+        COMPOSITION_PROFILE: 'local-fixed-user',
+        AUTH_MODE: 'local-fixed-user',
+        PERSISTENCE_MODE: 'in-memory',
+        RESERVATION_WORKER_MODE: 'disabled',
+        RESERVATION_FAILURE_INJECTION: {
+          mode: 'stable-random-unexpected-error',
+          failureRate: 0.4,
+          salt: 'demo-salt',
+        },
+      },
+    );
+
+    expect(composition.movieReservations.reservationFailureInjection).toEqual({
+      mode: 'stable-random-unexpected-error',
+      failureRate: 0.4,
+      salt: 'demo-salt',
     });
   });
 });
