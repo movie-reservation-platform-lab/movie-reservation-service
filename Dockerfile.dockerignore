@@ -1,0 +1,13 @@
+*
+
+!package.json
+!package-lock.json
+
+!movie-reservation-service/
+movie-reservation-service/**
+!movie-reservation-service/Dockerfile
+!movie-reservation-service/Dockerfile.dockerignore
+!movie-reservation-service/package.json
+!movie-reservation-service/tsconfig.json
+!movie-reservation-service/src/
+!movie-reservation-service/src/**
