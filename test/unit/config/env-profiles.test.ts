@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseEnv } from 'node:util';
 
 import { describe, expect, it } from 'vitest';
 
@@ -7,6 +8,11 @@ import { parseConfig } from '../../../src/config';
 import { createAppComposition } from '../../../src/di/app-composition';
 
 const serviceRoot = process.cwd();
+
+/**
+ * Expected defaults for each committed runtime env template. Each row is one
+ * scenario; the tests below group assertions by the contract they protect.
+ */
 const runtimeEnvTemplateExpectations = [
   {
     relativePath: 'env_files/templates/local/local-fixed-user.env.template',
@@ -87,72 +93,107 @@ const runtimeEnvTemplateExpectations = [
   },
 ] as const;
 
+const localTelemetryEnvTemplateExpectations = runtimeEnvTemplateExpectations.filter(
+  (expectation) => expectation.otlpEndpoint !== undefined,
+);
+const platformTelemetryEnvTemplateExpectations = runtimeEnvTemplateExpectations.filter(
+  (expectation) => expectation.otlpEndpoint === undefined,
+);
+const postgresEnvTemplateExpectations = runtimeEnvTemplateExpectations.filter(
+  (expectation) => expectation.databaseHost !== undefined,
+);
+
 describe('committed service env profile templates', () => {
   /**
    * TODO: These tests are intentionally shallow static checks. They protect the
-   * current template defaults, but they are not a good long-term substitute for
-   * runtime profile smoke tests that start the app with each profile and verify
-   * externally visible behavior.
+   *    current template defaults, but they are not a good long-term substitute for
+   *    runtime profile smoke tests that start the app with each profile and verify
+   *    externally visible behavior.
    */
   it.each(runtimeEnvTemplateExpectations)(
-    '%s selects the expected composition profile',
-    ({ relativePath, compositionProfile: expectedCompositionProfile }) => {
+    '%s keeps profile-owned dependency selection and runtime defaults aligned',
+    ({ relativePath, compositionProfile, authMode, persistenceMode, enableGraphiql, reservationWorkerMode, host }) => {
       const profile = readEnvProfile(relativePath);
-
-      expect(profile.COMPOSITION_PROFILE).toBe(expectedCompositionProfile);
-    },
-  );
-
-  it.each(runtimeEnvTemplateExpectations)(
-    '%s lets the composition profile own auth and persistence mode selection',
-    ({ relativePath }) => {
-      const profile = readEnvProfile(relativePath);
-
-      expect(profile.AUTH_MODE).toBeUndefined();
-      expect(profile.PERSISTENCE_MODE).toBeUndefined();
-    },
-  );
-
-  it.each(runtimeEnvTemplateExpectations)('%s keeps failure injection explicitly disabled', ({ relativePath }) => {
-    const profile = readEnvProfile(relativePath);
-
-    expect(profile.RESERVATION_FAILURE_INJECTION_MODE).toBe('disabled');
-    expect(profile.RESERVATION_FAILURE_INJECTION_RATE).toBe('0');
-    expect(profile.RESERVATION_FAILURE_INJECTION_SALT).toBeUndefined();
-  });
-
-  it.each(runtimeEnvTemplateExpectations)(
-    '%s parses to the expected runtime dependency modes',
-    ({ relativePath, authMode, persistenceMode, enableGraphiql, reservationWorkerMode, host, otlpEndpoint }) => {
       const config = parseRuntimeEnvTemplate(relativePath);
 
+      expect(profile.COMPOSITION_PROFILE).toBe(compositionProfile);
+      expect(profile.AUTH_MODE).toBeUndefined();
+      expect(profile.PERSISTENCE_MODE).toBeUndefined();
+
+      expect(config.COMPOSITION_PROFILE).toBe(compositionProfile);
       expect(config.AUTH_MODE).toBe(authMode);
       expect(config.PERSISTENCE_MODE).toBe(persistenceMode);
       expect(config.ENABLE_GRAPHIQL).toBe(enableGraphiql);
       expect(config.RESERVATION_WORKER_MODE).toBe(reservationWorkerMode);
       expect(config.HOST).toBe(host);
-      expect(config.SERVICE_VERSION).toBe('0.1.0');
-      expect(config.OBSERVABILITY_ENABLED).toBe(true);
+      expect(config.SERVICE_VERSION).toBe('1.0.0');
       expect(config.OTEL_SERVICE_NAME).toBe('movie-reservation-service');
-      expect(config.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(otlpEndpoint);
-      expect(config.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/protobuf');
-      expect(config.OTEL_PROPAGATORS).toBe('tracecontext,baggage');
+    },
+  );
+
+  it.each(runtimeEnvTemplateExpectations)(
+    '%s keeps reservation failure injection disabled in committed templates',
+    ({ relativePath }) => {
+      const profile = readEnvProfile(relativePath);
+      const config = parseRuntimeEnvTemplate(relativePath);
+
+      expect(profile.RESERVATION_FAILURE_INJECTION_MODE).toBe('disabled');
+      expect(profile.RESERVATION_FAILURE_INJECTION_RATE).toBe('0');
+      expect(profile.RESERVATION_FAILURE_INJECTION_SALT).toBeUndefined();
       expect(config.RESERVATION_FAILURE_INJECTION).toEqual({ mode: 'disabled' });
     },
   );
-  it.each(runtimeEnvTemplateExpectations.filter((expectation) => expectation.databaseHost !== undefined))(
-    '%s selects the expected Postgres hostname',
-    (expectation) => {
-      const { relativePath, databaseHost: expectedHost } = expectation;
-      if (expectedHost === undefined) {
-        throw new Error('template does not define an expected database');
+
+  it.each(localTelemetryEnvTemplateExpectations)(
+    '%s keeps local telemetry exporter selection explicit and backend-neutral',
+    ({ relativePath, otlpEndpoint }) => {
+      if (otlpEndpoint === undefined) {
+        throw new Error('local telemetry template is missing an expected OTLP endpoint');
       }
 
       const profile = readEnvProfile(relativePath);
 
-      expect(profile.DATABASE_URL).toContain(`@${expectedHost}/`);
+      expect(profile.OBSERVABILITY_ENABLED).toBe('true');
+      expect(profile.OTEL_SERVICE_NAME).toBe('movie-reservation-service');
+      expect(profile.OTEL_TRACES_EXPORTER).toBe('otlp');
+      expect(profile.OTEL_METRICS_EXPORTER).toBe('otlp');
+      expect(profile.OTEL_LOGS_EXPORTER).toBe('none');
+      expect(profile.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(otlpEndpoint);
+      expect(profile.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/protobuf');
+      expect(profile.OTEL_METRIC_EXPORT_INTERVAL).toBe('5000');
+      expect(profile.OTEL_PROPAGATORS).toBe('tracecontext,baggage');
+      expect(profile.OTEL_RESOURCE_ATTRIBUTES).toBe(
+        'deployment.environment.name=local,service.namespace=movie-reservation-platform',
+      );
     },
   );
+
+  it.each(platformTelemetryEnvTemplateExpectations)(
+    '%s keeps platform telemetry endpoint implicit for the task-local collector',
+    ({ relativePath }) => {
+      const profile = readEnvProfile(relativePath);
+
+      expect(profile.OBSERVABILITY_ENABLED).toBe('true');
+      expect(profile.OTEL_SERVICE_NAME).toBe('movie-reservation-service');
+      expect(profile.OTEL_TRACES_EXPORTER).toBe('otlp');
+      expect(profile.OTEL_METRICS_EXPORTER).toBe('none');
+      expect(profile.OTEL_LOGS_EXPORTER).toBe('none');
+      expect(profile.OTEL_EXPORTER_OTLP_ENDPOINT).toBeUndefined();
+      expect(profile.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/protobuf');
+      expect(profile.OTEL_PROPAGATORS).toBe('tracecontext,baggage');
+    },
+  );
+
+  it.each(postgresEnvTemplateExpectations)('%s selects the expected Postgres hostname', (expectation) => {
+    const { relativePath, databaseHost: expectedHost } = expectation;
+    if (expectedHost === undefined) {
+      throw new Error('template does not define an expected database');
+    }
+
+    const profile = readEnvProfile(relativePath);
+
+    expect(profile.DATABASE_URL).toContain(`@${expectedHost}/`);
+  });
 });
 
 describe('parseConfig persistence settings', () => {
@@ -244,19 +285,20 @@ describe('parseConfig runtime and worker settings', () => {
     expect(config.RESERVATION_FAILURE_INJECTION).toEqual({ mode: 'disabled' });
   });
 
-  it('defaults observability off in tests and on in local runtime', () => {
-    const testConfig = parseConfig({
-      NODE_ENV: 'test',
-    });
+  it('keeps telemetry exporter settings outside application configuration', () => {
     const developmentConfig = parseConfig({
       NODE_ENV: 'development',
+      OBSERVABILITY_ENABLED: 'not-a-boolean',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'not-a-url',
+      OTEL_EXPORTER_OTLP_PROTOCOL: 'not-a-protocol',
+      OTEL_PROPAGATORS: '',
     });
 
-    expect(testConfig.OBSERVABILITY_ENABLED).toBe(false);
-    expect(developmentConfig.OBSERVABILITY_ENABLED).toBe(true);
     expect(developmentConfig.OTEL_SERVICE_NAME).toBe('movie-reservation-service');
-    expect(developmentConfig.OTEL_EXPORTER_OTLP_PROTOCOL).toBe('http/protobuf');
-    expect(developmentConfig.OTEL_PROPAGATORS).toBe('tracecontext,baggage');
+    expect(developmentConfig).not.toHaveProperty('OBSERVABILITY_ENABLED');
+    expect(developmentConfig).not.toHaveProperty('OTEL_EXPORTER_OTLP_ENDPOINT');
+    expect(developmentConfig).not.toHaveProperty('OTEL_EXPORTER_OTLP_PROTOCOL');
+    expect(developmentConfig).not.toHaveProperty('OTEL_PROPAGATORS');
   });
 
   it('accepts explicit fake worker settings', () => {
@@ -326,7 +368,7 @@ describe('parseConfig runtime and worker settings', () => {
     );
   });
 
-  it('requires a positive rate and salt for stable-random failure injection', () => {
+  it('requires a positive rate for stable-random failure injection', () => {
     expect(() =>
       parseConfig({
         NODE_ENV: 'test',
@@ -337,7 +379,9 @@ describe('parseConfig runtime and worker settings', () => {
     ).toThrow(
       'RESERVATION_FAILURE_INJECTION_RATE must be greater than 0 when stable-random failure injection is enabled',
     );
+  });
 
+  it('requires a salt for stable-random failure injection', () => {
     expect(() =>
       parseConfig({
         NODE_ENV: 'test',
@@ -413,26 +457,16 @@ describe('app composition mapping', () => {
   });
 });
 
-function readEnvProfile(relativePath: string): Record<string, string> {
-  const profile: Record<string, string> = {};
-
-  for (const line of readFileSync(join(serviceRoot, relativePath), 'utf8')
-    .split('\n')
-    .filter((profileLine) => {
-      return profileLine.length > 0 && !profileLine.startsWith('#');
-    })) {
-    const separatorIndex = line.indexOf('=');
-
-    if (separatorIndex === -1) {
-      continue;
-    }
-
-    profile[line.slice(0, separatorIndex)] = line.slice(separatorIndex + 1);
-  }
-
-  return profile;
+/**
+ * Reads a committed env template with Node's dotenv-compatible parser.
+ */
+function readEnvProfile(relativePath: string): NodeJS.ProcessEnv {
+  return parseEnv(readFileSync(join(serviceRoot, relativePath), 'utf8'));
 }
 
+/**
+ * Parses an env template while filling test-only values required by production-like profiles.
+ */
 function parseRuntimeEnvTemplate(relativePath: string) {
   const env = readEnvProfile(relativePath);
 

@@ -11,14 +11,11 @@
  * process shutdown hooks.
  *
  * TODO: Re-evaluate this startup shape after the local observability foundation
- * is stable. Compare this explicit SDK setup plus selected auto-instrumentation
- * with OpenTelemetry JS zero-code instrumentation and with a dedicated bootstrap
- * entrypoint that starts observability before dynamically importing the app.
+ *  is stable. Compare this explicit SDK setup plus selected auto-instrumentation
+ *  with OpenTelemetry JS zero-code instrumentation and with a dedicated bootstrap
+ *  entrypoint that starts observability before dynamically importing the app.
  */
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
@@ -27,30 +24,30 @@ import { GraphQLInstrumentation } from '@opentelemetry/instrumentation-graphql';
 import { KnexInstrumentation } from '@opentelemetry/instrumentation-knex';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 
+import { SERVICE_VERSION } from '../../service-metadata.js';
+import { startOpenTelemetry, writeOpenTelemetryDiagnostic } from './otel-lifecycle.js';
+
 const observabilityEnabled = process.env.OBSERVABILITY_ENABLED !== 'false' && process.env.NODE_ENV !== 'test';
 const serviceName = process.env.OTEL_SERVICE_NAME ?? 'movie-reservation-service';
-const serviceVersion = process.env.SERVICE_VERSION ?? process.env.npm_package_version ?? '0.1.0';
 
-if (observabilityEnabled) {
-  const sdk = new NodeSDK({
+/**
+ * Creates the service's NodeSDK with explicit resource identity and selected instrumentations.
+ *
+ * Exporter selection remains controlled by standard OpenTelemetry environment variables.
+ */
+function createOpenTelemetrySdk(): NodeSDK {
+  return new NodeSDK({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: serviceName,
-      [ATTR_SERVICE_VERSION]: serviceVersion,
-      'deployment.environment.name': process.env.NODE_ENV ?? 'development',
+      [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION ?? SERVICE_VERSION,
     }),
-    traceExporter: new OTLPTraceExporter(),
-    metricReaders: [
-      new PeriodicExportingMetricReader({
-        exporter: new OTLPMetricExporter(),
-        exportIntervalMillis: readPositiveIntegerEnv('OTEL_METRIC_EXPORT_INTERVAL', 5_000),
-      }),
-    ],
     instrumentations: [
       new HttpInstrumentation(),
       new ExpressInstrumentation({
         ignoreLayersType: [ExpressLayerType.MIDDLEWARE],
       }),
       new GraphQLInstrumentation({
+        allowValues: false,
         depth: 2,
         mergeItems: true,
       }),
@@ -58,25 +55,19 @@ if (observabilityEnabled) {
       new PgInstrumentation(),
     ],
   });
-
-  sdk.start();
-
-  process.once('SIGTERM', () => {
-    void sdk.shutdown();
-  });
-  process.once('SIGINT', () => {
-    void sdk.shutdown();
-  });
 }
 
-function readPositiveIntegerEnv(name: string, fallback: number): number {
-  const value = process.env[name];
+const telemetry = startOpenTelemetry({
+  enabled: observabilityEnabled,
+  diagnosticSink: writeOpenTelemetryDiagnostic,
+  createSdk: createOpenTelemetrySdk,
+});
 
-  if (value === undefined) {
-    return fallback;
-  }
-
-  const parsedValue = Number.parseInt(value, 10);
-
-  return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : fallback;
+if (telemetry !== undefined) {
+  process.once('SIGTERM', () => {
+    void telemetry.shutdown();
+  });
+  process.once('SIGINT', () => {
+    void telemetry.shutdown();
+  });
 }
