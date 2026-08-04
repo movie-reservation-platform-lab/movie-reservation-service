@@ -7,23 +7,13 @@ import type { ReservationWorkObservabilityContext } from './reservation-work-obs
  * metrics without depending on GraphQL field names.
  */
 export type MovieReservationBusinessOperation =
-  | 'me'
-  | 'movies'
-  | 'screenings'
-  | 'requestReservation'
-  | 'reservationRequestStatus'
-  | 'reservationResult'
-  | 'unknown';
+  'me' | 'movies' | 'screenings' | 'requestReservation' | 'reservationRequestStatus' | 'reservationResult' | 'unknown';
 
 /**
  * Processor outcomes that are meaningful to operators and support workflows.
  */
 export type ReservationProcessorOutcome =
-  | 'no-pending-request'
-  | 'confirmed'
-  | 'rejected'
-  | 'retryable-failure'
-  | 'failed';
+  'no-pending-request' | 'confirmed' | 'rejected' | 'retryable-failure' | 'failed';
 
 /**
  * Attributes for the API-side event emitted after a reservation request is

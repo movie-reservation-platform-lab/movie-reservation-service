@@ -11,7 +11,7 @@ export async function findReservationRequestSeatIds(
 ): Promise<readonly SeatId[]> {
   const rows = await database<{ readonly seat_id: string }>('reservation_request_seats')
     .select('seat_id')
-    .where({ reservation_request_id: reservationRequestId })
+    .where('reservation_request_id', reservationRequestId)
     .orderBy('seat_id', 'asc');
 
   return rows.map((row) => createSeatId(row.seat_id));
@@ -26,7 +26,7 @@ export async function findReservationSeatIds(
 ): Promise<readonly SeatId[]> {
   const rows = await database<{ readonly seat_id: string }>('reservation_seats')
     .select('seat_id')
-    .where({ reservation_id: reservationId })
+    .where('reservation_id', reservationId)
     .orderBy('seat_id', 'asc');
 
   return rows.map((row) => createSeatId(row.seat_id));

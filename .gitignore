@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+
+env_files/local/
+env_files/in-docker/
+
+.env
+.env.*
+!.env.example

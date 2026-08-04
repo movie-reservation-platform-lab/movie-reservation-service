@@ -6,15 +6,12 @@ WORKDIR /workspace
 ENV CI=true
 
 COPY package.json package-lock.json ./
-COPY movie-reservation-service/package.json movie-reservation-service/package.json
 
-RUN npm ci \
-    --workspace=movie-reservation-service \
-    --include-workspace-root=false
+RUN npm ci
 
-COPY movie-reservation-service movie-reservation-service
+COPY . .
 
-RUN npm -w movie-reservation-service run build
+RUN npm run build
 
 FROM node:24-bookworm-slim AS production-dependencies
 
@@ -22,12 +19,8 @@ WORKDIR /workspace
 ENV CI=true
 
 COPY package.json package-lock.json ./
-COPY movie-reservation-service/package.json movie-reservation-service/package.json
 
-RUN npm ci \
-    --omit=dev \
-    --workspace=movie-reservation-service \
-    --include-workspace-root=false
+RUN npm ci --omit=dev
 
 FROM node:24-bookworm-slim AS runtime
 
@@ -35,10 +28,9 @@ WORKDIR /workspace
 ENV NODE_ENV=production
 
 COPY --from=production-dependencies /workspace/node_modules node_modules
-COPY --from=build /workspace/movie-reservation-service/package.json movie-reservation-service/package.json
-COPY --from=build /workspace/movie-reservation-service/dist movie-reservation-service/dist
+COPY --from=build /workspace/package.json package.json
+COPY --from=build /workspace/dist dist
 
-WORKDIR /workspace/movie-reservation-service
 EXPOSE 3000
 
 CMD ["npm", "run", "start"]
