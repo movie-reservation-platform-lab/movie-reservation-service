@@ -15,12 +15,7 @@ interface PackageLock {
 }
 
 const repositoryRoot = process.cwd();
-const standaloneSurfaces = [
-  'docker-compose.yml',
-  'DEVELOPMENT.md',
-  'README.md',
-  'src/service-metadata.ts',
-] as const;
+const standaloneSurfaces = ['docker-compose.yml', 'DEVELOPMENT.md', 'README.md', 'src/service-metadata.ts'] as const;
 
 describe('standalone repository extraction contract', () => {
   it('uses one root package and lockfile without workspace-scoped scripts', () => {
