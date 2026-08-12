@@ -1,6 +1,11 @@
 node_modules/
 dist/
 coverage/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.roo/
 
 env_files/local/
 env_files/in-docker/

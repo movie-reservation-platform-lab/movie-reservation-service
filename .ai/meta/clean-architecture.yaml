@@ -1,0 +1,3 @@
+type: skill
+skillName: clean-architecture
+description: 'Use when designing or reviewing reservation-service domain, application, infrastructure, presentation, port, and dependency-injection boundaries.'

@@ -1,0 +1,7 @@
+interface:
+  display_name: 'Programming KB'
+  short_description: 'Consult an explicitly requested local KB'
+  default_prompt: 'Use $programming-kb to consult my configured local programming knowledge base for this task.'
+
+policy:
+  allow_implicit_invocation: false
