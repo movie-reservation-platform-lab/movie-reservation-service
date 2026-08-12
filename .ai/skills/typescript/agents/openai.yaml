@@ -1,0 +1,4 @@
+interface:
+  display_name: 'TypeScript'
+  short_description: 'Design clear safe TypeScript boundaries'
+  default_prompt: 'Use $typescript to implement or review this TypeScript reservation-service change.'

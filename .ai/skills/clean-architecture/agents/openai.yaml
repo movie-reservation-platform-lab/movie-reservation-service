@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Reservation Clean Architecture'
+  short_description: 'Protect reservation-service boundaries'
+  default_prompt: 'Use $clean-architecture to design or review this reservation-service boundary change.'

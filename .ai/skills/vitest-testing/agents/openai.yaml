@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Vitest Testing'
+  short_description: 'Fake-first Vitest testing guidance'
+  default_prompt: 'Use $vitest-testing to design or update TypeScript tests with fake-first Vitest patterns.'

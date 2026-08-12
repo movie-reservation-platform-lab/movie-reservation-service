@@ -1,0 +1,4 @@
+interface:
+  display_name: 'NestJS Reservation Service'
+  short_description: 'Build the NestJS reservation API'
+  default_prompt: 'Use $nestjs to implement or review this NestJS reservation-service change.'

@@ -1,0 +1,3 @@
+type: skill
+skillName: nestjs
+description: 'Use when implementing, refactoring, or explaining NestJS service code, including controllers, modules, providers, GraphQL resolvers, DTOs, validation, and tests; pair with clean-architecture for layer boundaries.'
