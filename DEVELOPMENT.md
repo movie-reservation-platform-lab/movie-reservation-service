@@ -487,6 +487,38 @@ Testcontainers Postgres database. The current hosted workflow does not run that
 Docker-dependent suite. A follow-up will add it as a separately visible hosted
 job; it should not be hidden inside a general quality or test step.
 
+## Container Image
+
+Build the baseline-compatible local image:
+
+```bash
+npm run docker:build
+```
+
+`Dockerfile.dockerignore` uses an allowlist, so the build context contains only
+the Docker files, package manifests, `tsconfig.json`, and `src/`. The build
+stage uses the root lockfile and the existing `tsconfig.json`; a separate stage
+installs production dependencies. The runtime image receives only
+`package.json`, `dist/`, and production `node_modules`.
+
+The host build also compiles `scripts/` and `test/` through the shared
+`tsconfig.json`. Those paths are intentionally absent from the production image
+context; any future non-`src/` input required to compile the service must update
+the allowlist in the same change.
+
+This extraction intentionally preserves the original image behavior:
+
+- the runtime uses the base image's default user;
+- generated GraphQL schema output remains `schema.gql` under the service root;
+- `db:migrate` and `db:migrate:status` remain source-mode commands and cannot
+  run inside the runtime image, which omits `src/` and the development-only
+  `tsx` runner.
+
+Non-root execution, runtime image smoke checks, schema-output hardening, and
+immutable-image migrations belong to dedicated follow-ups. The migration
+limitation must be resolved before using this image with a PostgreSQL/RDS-backed
+environment; it does not block the current in-memory smoke path.
+
 ## Formatting And Linting
 
 Format files:
