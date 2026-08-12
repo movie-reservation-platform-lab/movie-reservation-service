@@ -1,0 +1,5 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="service_e2e_debug_testcontainers_postgres" type="NodeJSConfigurationType" application-parameters="run test/e2e -t &quot;creates, processes, and reads a confirmed reservation&quot; --testTimeout 0 --hookTimeout 0 --no-file-parallelism" path-to-js-file="$PROJECT_DIR$/node_modules/vitest/vitest.mjs" working-dir="$PROJECT_DIR$">
+    <method v="2" />
+  </configuration>
+</component>

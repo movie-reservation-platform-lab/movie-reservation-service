@@ -2,10 +2,10 @@
 
 NestJS GraphQL API for the movie reservation platform.
 
-This repository was extracted from
-`movie-reservation-platform-lab/golden-path-ecs-template` so the reservation API
-can have an independent CI and artifact pipeline. Keep the golden-path copy as
-the migration source until this repository passes CI and an AWS smoke check.
+This repository is the history-preserving extraction of
+`golden-path-ecs-template/movie-reservation-service`. NestJS/TypeScript remains
+the service implementation; keep the golden-path copy as the migration
+reference until this standalone repository passes CI and an AWS smoke check.
 
 ## Local Development
 
@@ -19,9 +19,36 @@ npm run dev
 Useful scripts:
 
 - `npm run check` runs formatting, lint, typecheck, unit tests, and integration tests.
-- `npm run ci` runs the full repository CI check, including e2e tests and build.
+- `npm run test:unit` runs the fast unit suite.
+- `npm run test:integration` runs the integration suite.
+- `npm run test:e2e` runs Postgres e2e tests with Testcontainers and requires Docker.
+- `npm run ci` runs the full local CI wrapper, including e2e tests and build.
 - `npm run build` compiles the service into `dist/`.
 - `npm run db:migrate:local-postgres` applies local Postgres migrations.
+
+## Local Compose Stack
+
+The extracted Compose stack supports several feedback levels:
+
+```sh
+# Postgres only; run and debug the API on the host.
+mkdir -p env_files/local
+cp env_files/templates/local/local-postgres.env.template env_files/local/local-postgres.env
+docker compose up -d postgres
+npm run db:migrate:local-postgres
+
+# OpenTelemetry collector for a host-run API.
+docker compose --profile observability up -d otel-collector
+
+# Postgres, collector, and containerized API on http://localhost:3001.
+docker compose --profile api up --build
+```
+
+The baseline stack uses fixed loopback ports and container names, so run it from
+only one checkout or worktree at a time.
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for env setup, database seeding, local e2e,
+debugging, and observability details.
 
 ## Deployment Contract
 
