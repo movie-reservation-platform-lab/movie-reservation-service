@@ -1,0 +1,8 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="service_debug_local_compose_dependencies" type="NodeJSConfigurationType" application-parameters="src/index.ts" node-parameters="--env-file=env_files/local/local-postgres.env" path-to-js-file="$PROJECT_DIR$/node_modules/.bin/tsx" working-dir="$PROJECT_DIR$">
+    <EXTENSION ID="com.intellij.javascript.debugger.execution.StartBrowserRunConfigurationExtension">
+      <browser name="98ca6316-2f89-46d9-a9e5-fa9e2b0625b3" />
+    </EXTENSION>
+    <method v="2" />
+  </configuration>
+</component>

@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: movie-reservation-service-postgres
+    environment:
+      POSTGRES_DB: movie_reservation_service
+      POSTGRES_USER: movie_reservation_service
+      POSTGRES_PASSWORD: movie_reservation_service
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - movie_reservation_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U movie_reservation_service -d movie_reservation_service
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: movie-reservation-service-otel-collector
+    profiles:
+      - api
+      - observability
+    command:
+      - --config=/etc/otel-collector-config.yaml
+    env_file:
+      - ./observability/local-collector.env
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - '127.0.0.1:14317:4317'
+      - '127.0.0.1:14318:4318'
+      - '127.0.0.1:18889:8889'
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otel-collector-config.yaml:ro
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: movie-reservation-service-api
+    profiles:
+      - api
+    env_file:
+      - ./env_files/templates/in-docker/local-postgres.env.template
+    environment:
+      OTEL_METRIC_EXPORT_INTERVAL: '5000'
+    ports:
+      - '127.0.0.1:${MOVIE_RESERVATION_API_HOST_PORT:-3001}:3000'
+    labels:
+      observability.logs: 'true'
+      service.name: 'movie-reservation-service'
+      service.environment: 'local'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - '-e'
+        - "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  movie_reservation_postgres_data:

@@ -7,6 +7,12 @@ coverage/
 .gemini/
 .roo/
 
+# WebStorm local project state; share only portable run configurations.
+.idea/*
+!.idea/runConfigurations/
+.idea/runConfigurations/*
+!.idea/runConfigurations/*.xml
+
 env_files/local/
 env_files/in-docker/
 
