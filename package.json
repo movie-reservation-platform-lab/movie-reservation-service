@@ -19,6 +19,7 @@
     "db:migrate:local-postgres": "node --env-file=env_files/local/local-postgres.env --import tsx src/infrastructure/database/migrate.ts latest",
     "db:migrate:status:local-postgres": "node --env-file=env_files/local/local-postgres.env --import tsx src/infrastructure/database/migrate.ts status",
     "db:seed:local-postgres": "node --env-file=env_files/local/local-postgres.env --import tsx src/infrastructure/database/seed-local.ts",
+    "docker:build": "docker build --file Dockerfile --tag movie-reservation-service:local .",
     "smoke:observability": "tsx scripts/observability-smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",

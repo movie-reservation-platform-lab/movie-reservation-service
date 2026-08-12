@@ -24,6 +24,7 @@ Useful scripts:
 - `npm run test:e2e` runs Postgres e2e tests with Testcontainers and requires Docker.
 - `npm run ci` runs the full local CI wrapper, including e2e tests and build.
 - `npm run build` compiles the service into `dist/`.
+- `npm run docker:build` builds the baseline-compatible local container image.
 - `npm run db:migrate:local-postgres` applies local Postgres migrations.
 
 ## Local Compose Stack
@@ -49,6 +50,17 @@ only one checkout or worktree at a time.
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for env setup, database seeding, local e2e,
 debugging, and observability details.
+
+## Container Image
+
+```sh
+npm run docker:build
+```
+
+The build context is allowlisted to the package manifests, Docker files,
+TypeScript configuration, and `src/`. The runtime image contains the compiled
+service and production dependencies. See [DEVELOPMENT.md](DEVELOPMENT.md) for
+the deliberately preserved baseline limitations and their follow-ups.
 
 ## Deployment Contract
 
