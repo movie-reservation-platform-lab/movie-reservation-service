@@ -90,9 +90,9 @@ permissions. These local actions are the migration seam for the planned
 ## Deployment Contract
 
 Application CI publishes one attempt-unique discovery tag for each successful,
-current `main` run and records the immutable GHCR digest plus build provenance.
-Retries use a new tag and never move an earlier tag. The digest, not the tag, is
-the candidate identity.
+current `main` run and records the immutable GHCR digest plus GitHub-hosted build
+provenance. Retries use a new tag and never move an earlier tag. The digest, not
+the tag, is the candidate identity.
 
 `movie-platform-environments` validates and selects candidate digests for
 promotion. This service does not know the final destination and does not deploy
