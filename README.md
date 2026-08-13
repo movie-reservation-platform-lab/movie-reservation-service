@@ -64,8 +64,9 @@ the deliberately preserved baseline limitations and their follow-ups.
 
 ## Hosted CI
 
-Pull requests, pushes to `main`, and manual workflow runs use five stable checks
-without repository, package, or deployment write authority:
+Pull requests, manual workflow runs, and fork activity use five stable,
+non-publishing checks without repository, package, or deployment write
+authority:
 
 - `service-quality` runs formatting, linting, and typechecking;
 - `service-unit-tests` runs unit tests;
@@ -75,15 +76,27 @@ without repository, package, or deployment write authority:
   service checks pass, explicitly targeting `linux/amd64`.
 
 Hosted jobs call the focused npm scripts directly. `npm run check` and
-`npm run ci` remain local convenience wrappers. The current workflow neither
-publishes an image nor runs the Docker-dependent Postgres e2e suite; e2e will be
-added later as its own visible job.
+`npm run ci` remain local convenience wrappers. A push to `main` in this
+canonical repository runs the same four service gates, then replaces the local
+image check with `publish-candidate`. That job alone can publish and attest a
+`linux/amd64` image in GHCR. The Docker-dependent Postgres e2e suite is not yet
+hosted; it will be added later as its own visible job.
+
+Candidate preparation and handoff recording use tested repo-local composite
+actions, leaving the workflow focused on orchestration and explicit
+permissions. These local actions are the migration seam for the planned
+[organization CI building blocks](https://github.com/movie-reservation-platform-lab/.github/issues/5).
 
 ## Deployment Contract
 
-Application CI should publish an immutable container image. Platform
-infrastructure consumes that image by digest from the environment manifest; this
-repository does not deploy shared AWS infrastructure directly.
+Application CI publishes one attempt-unique discovery tag for each successful,
+current `main` run and records the immutable GHCR digest plus build provenance.
+Retries use a new tag and never move an earlier tag. The digest, not the tag, is
+the candidate identity.
+
+`movie-platform-environments` validates and selects candidate digests for
+promotion. This service does not know the final destination and does not deploy
+or mutate shared infrastructure.
 
 ## Source Backlog
 

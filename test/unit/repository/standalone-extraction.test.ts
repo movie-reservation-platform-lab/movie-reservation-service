@@ -59,20 +59,32 @@ describe('standalone repository extraction contract', () => {
     expect(compose).toContain("'127.0.0.1:${MOVIE_RESERVATION_API_HOST_PORT:-3001}:3000'");
   });
 
-  it('keeps hosted CI focused, pinned, and non-publishing', () => {
+  it('keeps hosted CI focused and pins every external action to an approved commit', () => {
     const workflow = readTextFile('.github/workflows/ci.yml');
-    const expectedJobs = [
+    const serviceJobs = [
       'service-quality',
       'service-unit-tests',
       'service-integration-tests',
       'service-build',
-      'container-image-check',
     ] as const;
-    const actionReferences = [...workflow.matchAll(/^\s+uses:\s+(\S+)/gm)].map((match) => match[1]);
-    const allowedActionReferences = [
+    const expectedJobs = [...serviceJobs, 'container-image-check', 'publish-candidate'] as const;
+    const actionReferences = [...workflow.matchAll(/^\s+uses:\s+(\S+)/gm)].flatMap((match) =>
+      match[1] === undefined ? [] : [match[1]],
+    );
+    const allowedExternalActionReferences = [
       'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803',
       'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38',
+      'docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f',
+      'docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9',
+      'docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8',
+      'actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a',
     ] as const;
+    const allowedLocalActionReferences = [
+      './.github/actions/prepare-container-candidate',
+      './.github/actions/record-container-candidate',
+    ] as const;
+    const localActionReferences = actionReferences.filter((reference) => reference.startsWith('./'));
+    const externalActionReferences = actionReferences.filter((reference) => !reference.startsWith('./'));
 
     expect(workflow).toMatch(/^name: CI$/m);
 
@@ -81,9 +93,10 @@ describe('standalone repository extraction contract', () => {
     }
 
     expect(actionReferences.length).toBeGreaterThan(0);
-    for (const actionReference of actionReferences) {
+    expect(localActionReferences).toEqual(allowedLocalActionReferences);
+    for (const actionReference of externalActionReferences) {
       expect(actionReference).toMatch(/^[^@\s]+@[0-9a-f]{40}$/);
-      expect(allowedActionReferences).toContain(actionReference);
+      expect(allowedExternalActionReferences).toContain(actionReference);
     }
 
     expect(workflow).toContain('run: npm run format:check');
@@ -96,8 +109,12 @@ describe('standalone repository extraction contract', () => {
     expect(workflow).toMatch(/^permissions:\s*\n\s+contents: read$/m);
     expect(workflow).not.toContain('pull_request_target:');
     expect(workflow).not.toMatch(/run:\s+npm run (?:check|ci|test:e2e)\b/);
-    expect(workflow).not.toMatch(/^\s+[a-z-]+:\s+write$/m);
-    expect(workflow).not.toMatch(/docker\s+login|--push|publish-candidate/);
+    expect(workflow).not.toContain(':latest');
+    expect(workflow).toContain('group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}');
+    expect(workflow).not.toContain('cancel-in-progress: true');
+    expect(workflow).toMatch(
+      /cancel-in-progress:[\s\S]*?github\.repository != 'movie-reservation-platform-lab\/movie-reservation-service'/,
+    );
 
     for (const job of ['service-unit-tests', 'service-integration-tests', 'service-build'] as const) {
       expect(readWorkflowJob(workflow, job)).toMatch(/^ {4}needs:\s*\n {6}- service-quality$/m);
@@ -105,9 +122,89 @@ describe('standalone repository extraction contract', () => {
 
     const containerImageJob = readWorkflowJob(workflow, 'container-image-check');
     expect(containerImageJob).toContain('DOCKER_DEFAULT_PLATFORM: linux/amd64');
-    for (const prerequisite of expectedJobs.slice(0, -1)) {
+    expect(containerImageJob).toContain("github.event_name != 'push'");
+    expect(containerImageJob).toContain("github.ref != 'refs/heads/main'");
+    expect(containerImageJob).toContain(
+      "github.repository != 'movie-reservation-platform-lab/movie-reservation-service'",
+    );
+    expect(containerImageJob).toMatch(/permissions:\s*\n\s+contents: read/);
+    expect(containerImageJob).not.toMatch(/^\s+[a-z-]+:\s+write$/m);
+    expect(containerImageJob).not.toMatch(/docker\/login-action|docker\/build-push-action|push: true/);
+    for (const prerequisite of serviceJobs) {
       expect(containerImageJob).toContain(`- ${prerequisite}`);
     }
+  });
+
+  it('publishes and attests candidates only for the canonical main branch', () => {
+    const workflow = readTextFile('.github/workflows/ci.yml');
+    const publisher = readWorkflowJob(workflow, 'publish-candidate');
+    const serviceJobs = [
+      'service-quality',
+      'service-unit-tests',
+      'service-integration-tests',
+      'service-build',
+    ] as const;
+
+    expect(publisher).toContain("github.event_name == 'push'");
+    expect(publisher).toContain("github.ref == 'refs/heads/main'");
+    expect(publisher).toContain("github.repository == 'movie-reservation-platform-lab/movie-reservation-service'");
+    for (const prerequisite of serviceJobs) {
+      expect(publisher).toContain(`- ${prerequisite}`);
+    }
+
+    expect(publisher).toMatch(
+      /permissions:\s*\n\s+contents: read\s*\n\s+packages: write\s*\n\s+id-token: write\s*\n\s+attestations: write/,
+    );
+    const writePermissions = [...workflow.matchAll(/^\s+([a-z-]+): write$/gm)].map((match) => match[1]);
+    expect(writePermissions).toEqual(['packages', 'id-token', 'attestations']);
+    expect(publisher).toContain('persist-credentials: false');
+    expect(publisher).toContain('uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9');
+    expect(publisher).toContain('uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8');
+    expect(publisher).toContain('uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a');
+    expect(publisher).toContain('uses: ./.github/actions/prepare-container-candidate');
+    expect(publisher).toContain('uses: ./.github/actions/record-container-candidate');
+    expect(publisher).toContain('expected-repository: movie-reservation-platform-lab/movie-reservation-service');
+    expect(publisher).toContain('expected-ref: refs/heads/main');
+    expect(publisher).toContain('platforms: linux/amd64');
+    expect(publisher).toContain('push: true');
+    expect(publisher).toContain('org.opencontainers.image.source=');
+    expect(publisher).toContain('org.opencontainers.image.revision=');
+    expect(publisher).toContain('org.opencontainers.image.version=');
+    expect(publisher).toContain('subject-digest: ${{ steps.publish.outputs.digest }}');
+    expect(publisher).toContain('push-to-registry: true');
+    expect(publisher).toContain('candidate-digest: ${{ steps.publish.outputs.digest }}');
+    expect(publisher).toContain('source-revision: ${{ github.sha }}');
+    expect(publisher).not.toMatch(/^\s+run:\s+\|/m);
+  });
+
+  it('exposes script-backed local actions through explicit publication contracts', () => {
+    const prepareAction = readTextFile('.github/actions/prepare-container-candidate/action.yml');
+    const recordAction = readTextFile('.github/actions/record-container-candidate/action.yml');
+
+    expect(prepareAction).toContain('using: composite');
+    expect(prepareAction).toContain('expected-repository:');
+    expect(prepareAction).toContain('expected-ref:');
+    for (const output of ['registry', 'repository', 'image_ref', 'tag', 'build_ref'] as const) {
+      expect(prepareAction).toContain(`value: \${{ steps.prepare.outputs.${output} }}`);
+    }
+    expect(prepareAction).toContain('run: bash "${{ github.action_path }}/prepare.sh"');
+
+    expect(recordAction).toContain('using: composite');
+    for (const input of [
+      'artifact-name',
+      'candidate-registry',
+      'candidate-repository',
+      'candidate-image',
+      'candidate-tag',
+      'candidate-digest',
+      'source-repository',
+      'source-revision',
+      'build-ref',
+    ] as const) {
+      expect(recordAction).toContain(`${input}:`);
+    }
+    expect(recordAction).toContain('value: ${{ steps.record.outputs.immutable_candidate }}');
+    expect(recordAction).toContain('run: bash "${{ github.action_path }}/record.sh"');
   });
 });
 
