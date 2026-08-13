@@ -208,7 +208,10 @@ jobs:
         with:
           subject-name: ${{ steps.image.outputs.image_ref }}
           subject-digest: ${{ steps.publish.outputs.digest }}
-          push-to-registry: true
+          # Keep provenance in GitHub's attestation API. Registry-hosted
+          # attestations create sha256-* fallback tags that GHCR presents as
+          # installable container images even though they are not runnable.
+          push-to-registry: false
 
       - name: Record candidate handoff
         uses: ./.github/actions/record-container-candidate

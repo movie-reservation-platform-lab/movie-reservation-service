@@ -171,7 +171,8 @@ describe('standalone repository extraction contract', () => {
     expect(publisher).toContain('org.opencontainers.image.revision=');
     expect(publisher).toContain('org.opencontainers.image.version=');
     expect(publisher).toContain('subject-digest: ${{ steps.publish.outputs.digest }}');
-    expect(publisher).toContain('push-to-registry: true');
+    expect(publisher).toContain('push-to-registry: false');
+    expect(publisher).not.toContain('push-to-registry: true');
     expect(publisher).toContain('candidate-digest: ${{ steps.publish.outputs.digest }}');
     expect(publisher).toContain('source-revision: ${{ github.sha }}');
     expect(publisher).not.toMatch(/^\s+run:\s+\|/m);

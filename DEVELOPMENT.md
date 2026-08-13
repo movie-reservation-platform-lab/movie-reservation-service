@@ -540,9 +540,12 @@ The publisher creates this attempt-unique discovery tag:
 ghcr.io/movie-reservation-platform-lab/movie-reservation-service:sha-<full-sha>-run-<run-id>-attempt-<attempt>
 ```
 
-It also adds OCI source, revision, and version labels; attests the exact digest;
-and records the registry, repository, full source SHA, digest-pinned image,
-Actions run URL, and verification command in the workflow summary. Downstream
+It also adds OCI source, revision, and version labels; records a GitHub-hosted
+build-provenance attestation for the exact digest; and records the registry,
+repository, full source SHA, digest-pinned image, Actions run URL, and
+verification command in the workflow summary. The attestation is deliberately
+not pushed into GHCR because its `sha256-*` OCI fallback tag is presented by the
+package UI as an installable image even though it is not runnable. Downstream
 automation must use `ghcr.io/...@sha256:...`, never the discovery tag, as the
 candidate identity.
 
@@ -575,6 +578,10 @@ After the first successful `main` publication:
    gh attestation verify oci://ghcr.io/...@sha256:... \
      --repo movie-reservation-platform-lab/movie-reservation-service
    ```
+
+   This command obtains provenance from GitHub's attestation API. Registry-hosted
+   attestation bundles, and admission tooling that requires them, remain a
+   `movie-platform-environments` concern.
 
 5. Hand the digest and provenance evidence to `movie-platform-environments` for
    its separate admission and promotion process.
