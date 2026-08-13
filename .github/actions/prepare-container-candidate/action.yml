@@ -1,0 +1,39 @@
+name: Prepare container candidate
+description: Resolve an attempt-unique GHCR identity and reject stale or non-canonical source revisions.
+
+inputs:
+  expected-repository:
+    description: Canonical owner/repository allowed to publish.
+    required: true
+  expected-ref:
+    description: Fully qualified branch ref that must still contain the source revision.
+    required: false
+    default: refs/heads/main
+
+outputs:
+  registry:
+    description: Candidate registry hostname.
+    value: ${{ steps.prepare.outputs.registry }}
+  repository:
+    description: Lowercase candidate repository path without the registry.
+    value: ${{ steps.prepare.outputs.repository }}
+  image_ref:
+    description: Candidate image reference without a tag or digest.
+    value: ${{ steps.prepare.outputs.image_ref }}
+  tag:
+    description: Attempt-unique discovery tag.
+    value: ${{ steps.prepare.outputs.tag }}
+  build_ref:
+    description: URL of the exact GitHub Actions run attempt.
+    value: ${{ steps.prepare.outputs.build_ref }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve identity and verify source ref
+      id: prepare
+      shell: bash
+      env:
+        EXPECTED_REPOSITORY: ${{ inputs.expected-repository }}
+        EXPECTED_REF: ${{ inputs.expected-ref }}
+      run: bash "${{ github.action_path }}/prepare.sh"

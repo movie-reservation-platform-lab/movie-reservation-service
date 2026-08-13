@@ -1,0 +1,54 @@
+name: Record container candidate
+description: Validate a published digest and record the immutable candidate handoff.
+
+inputs:
+  artifact-name:
+    description: Human-readable artifact name used in the step summary heading.
+    required: true
+  candidate-registry:
+    description: Candidate registry hostname.
+    required: true
+  candidate-repository:
+    description: Candidate repository path without the registry.
+    required: true
+  candidate-image:
+    description: Candidate image reference without a tag or digest.
+    required: true
+  candidate-tag:
+    description: Attempt-unique discovery tag.
+    required: true
+  candidate-digest:
+    description: Published OCI digest returned by the build action.
+    required: true
+  source-repository:
+    description: GitHub owner/repository that produced the candidate.
+    required: true
+  source-revision:
+    description: Full Git source revision that produced the candidate.
+    required: true
+  build-ref:
+    description: URL of the exact GitHub Actions run attempt.
+    required: true
+
+outputs:
+  immutable_candidate:
+    description: Digest-pinned image reference eligible for downstream admission.
+    value: ${{ steps.record.outputs.immutable_candidate }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate and record candidate handoff
+      id: record
+      shell: bash
+      env:
+        ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        CANDIDATE_REGISTRY: ${{ inputs.candidate-registry }}
+        CANDIDATE_REPOSITORY: ${{ inputs.candidate-repository }}
+        CANDIDATE_IMAGE: ${{ inputs.candidate-image }}
+        CANDIDATE_TAG: ${{ inputs.candidate-tag }}
+        CANDIDATE_DIGEST: ${{ inputs.candidate-digest }}
+        SOURCE_REPOSITORY: ${{ inputs.source-repository }}
+        SOURCE_REVISION: ${{ inputs.source-revision }}
+        BUILD_REF: ${{ inputs.build-ref }}
+      run: bash "${{ github.action_path }}/record.sh"

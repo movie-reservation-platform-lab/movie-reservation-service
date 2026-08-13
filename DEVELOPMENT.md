@@ -495,25 +495,95 @@ GitHub Actions keeps each validation concern visible:
 - `service-unit-tests`: `test:unit` after quality passes;
 - `service-integration-tests`: `test:integration` after quality passes;
 - `service-build`: `build` after quality passes;
-- `container-image-check`: `docker:build` for `linux/amd64` after all four
-  service jobs pass.
+- `container-image-check`: a read-only `docker:build` for `linux/amd64` after
+  all four service jobs pass on pull requests, manual runs, and forks;
+- `publish-candidate`: a `linux/amd64` GHCR build and provenance attestation
+  after the same four jobs pass on a canonical-repository push to `main`.
 
 Each service job installs from `package-lock.json` independently with `npm ci`.
 Those jobs may update GitHub's npm download cache, but they have no repository,
 package, or deployment write authority.
-The image job builds locally and receives only `contents: read`; it does not log
-in to a registry or publish an image. The same non-publishing validation runs for
-draft and ready pull requests, `main` pushes, and manual workflow dispatches.
+The read-only image job receives only `contents: read`; it does not log in to a
+registry or publish an image. Draft and ready pull requests, manual workflow
+dispatches, and forks always use this path. Only `publish-candidate` receives
+`packages: write`, `id-token: write`, and `attestations: write`, and it uses the
+ephemeral `GITHUB_TOKEN` rather than a PAT or separately managed signing key.
+
+The publisher keeps imperative policy out of the workflow YAML. The repo-local
+`prepare-container-candidate` composite action validates the canonical event,
+constructs attempt-unique metadata, and rejects a stale `main` revision before
+registry login. The `record-container-candidate` action validates that the
+digest and tag match the source/run identity before writing the immutable
+handoff summary. Their Bash implementations are dependency-free and covered by
+unit tests with temporary GitHub output files and a fake remote `git` command.
+
+These actions are an intentional local migration seam, not the final
+organization API. [The shared CI building-block issue](https://github.com/movie-reservation-platform-lab/.github/issues/5)
+owns the reusable workflow, second-container pilot, versioning, and eventual
+replacement of these actions with a full-SHA-pinned platform workflow call.
 
 Keep Testcontainers/Postgres e2e separate when it is added later so its Docker
 dependency, runtime, and failures remain independently visible. Do not hide it
 inside `service-quality`, `npm run check`, or another hosted wrapper.
 
-This workflow replaces the former `check` status with five stable check names.
-After their first pull-request run appears, configure the `main` ruleset to
-require a pull request and all five names before merging this change. If a
-repository already requires the legacy `check`, replace it during that update
-and keep pull-request enforcement enabled throughout the transition.
+The pull-request workflow replaces the former `check` status with five stable
+check names. Before merging the publication change, configure the `main`
+ruleset to require a pull request and all five names. If a repository still
+requires the legacy `check`, replace it during that update and keep pull-request
+enforcement enabled throughout the transition.
+
+### Candidate publication and first-release checks
+
+The publisher creates this attempt-unique discovery tag:
+
+```text
+ghcr.io/movie-reservation-platform-lab/movie-reservation-service:sha-<full-sha>-run-<run-id>-attempt-<attempt>
+```
+
+It also adds OCI source, revision, and version labels; attests the exact digest;
+and records the registry, repository, full source SHA, digest-pinned image,
+Actions run URL, and verification command in the workflow summary. Downstream
+automation must use `ghcr.io/...@sha256:...`, never the discovery tag, as the
+candidate identity.
+
+A rerun checks that its source SHA still equals the canonical repository's
+current `main` SHA before logging in or pushing. If `main` has already advanced,
+the old run fails. This guard is best-effort: `main` can still advance while the
+image is building. A valid retry receives a new attempt tag, so it cannot
+overwrite a prior result, and downstream admission still selects an explicit
+attested digest.
+
+Superseded pull-request, manual, and fork runs are cancelled in event-specific
+concurrency groups. Canonical `main` push runs use a separate serialized group
+without cancelling an active run, so a manual validation or newer merge cannot
+interrupt the short interval between image push and attestation. If several
+merges arrive while one run is active, GitHub may replace an older pending run
+with the latest cumulative `main` state.
+
+After the first successful `main` publication:
+
+1. Inspect the `publish-candidate` summary and retain its digest and Actions run
+   URL together.
+2. In the GitHub package settings, verify the package is linked to this source
+   repository and change its visibility to public. The workflow deliberately
+   does not receive broader credentials to automate that one-time setting.
+3. From an unauthenticated environment, pull the exact digest to verify public
+   access.
+4. Authenticate to GHCR, then run the summary's verification command:
+
+   ```bash
+   gh attestation verify oci://ghcr.io/...@sha256:... \
+     --repo movie-reservation-platform-lab/movie-reservation-service
+   ```
+
+5. Hand the digest and provenance evidence to `movie-platform-environments` for
+   its separate admission and promotion process.
+
+If the image push succeeds but attestation or summary generation fails, GHCR
+may contain the tagged image while the workflow is red. Treat that digest as
+ineligible: do not delete it, promote it, or infer success from its presence.
+Retry the same run only if its SHA is still current `main`; otherwise merge a
+fix or revert so the cumulative current state creates the next candidate.
 
 ## Container Image
 
