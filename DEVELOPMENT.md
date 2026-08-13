@@ -487,6 +487,34 @@ Testcontainers Postgres database. The current hosted workflow does not run that
 Docker-dependent suite. A follow-up will add it as a separately visible hosted
 job; it should not be hidden inside a general quality or test step.
 
+### Hosted CI job boundaries
+
+GitHub Actions keeps each validation concern visible:
+
+- `service-quality`: `format:check`, `lint`, and `typecheck`;
+- `service-unit-tests`: `test:unit` after quality passes;
+- `service-integration-tests`: `test:integration` after quality passes;
+- `service-build`: `build` after quality passes;
+- `container-image-check`: `docker:build` for `linux/amd64` after all four
+  service jobs pass.
+
+Each service job installs from `package-lock.json` independently with `npm ci`.
+Those jobs may update GitHub's npm download cache, but they have no repository,
+package, or deployment write authority.
+The image job builds locally and receives only `contents: read`; it does not log
+in to a registry or publish an image. The same non-publishing validation runs for
+draft and ready pull requests, `main` pushes, and manual workflow dispatches.
+
+Keep Testcontainers/Postgres e2e separate when it is added later so its Docker
+dependency, runtime, and failures remain independently visible. Do not hide it
+inside `service-quality`, `npm run check`, or another hosted wrapper.
+
+This workflow replaces the former `check` status with five stable check names.
+After their first pull-request run appears, configure the `main` ruleset to
+require a pull request and all five names before merging this change. If a
+repository already requires the legacy `check`, replace it during that update
+and keep pull-request enforcement enabled throughout the transition.
+
 ## Container Image
 
 Build the baseline-compatible local image:

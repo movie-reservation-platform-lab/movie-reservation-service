@@ -62,6 +62,23 @@ TypeScript configuration, and `src/`. The runtime image contains the compiled
 service and production dependencies. See [DEVELOPMENT.md](DEVELOPMENT.md) for
 the deliberately preserved baseline limitations and their follow-ups.
 
+## Hosted CI
+
+Pull requests, pushes to `main`, and manual workflow runs use five stable checks
+without repository, package, or deployment write authority:
+
+- `service-quality` runs formatting, linting, and typechecking;
+- `service-unit-tests` runs unit tests;
+- `service-integration-tests` runs integration tests;
+- `service-build` compiles the service;
+- `container-image-check` builds the baseline-compatible image after the four
+  service checks pass, explicitly targeting `linux/amd64`.
+
+Hosted jobs call the focused npm scripts directly. `npm run check` and
+`npm run ci` remain local convenience wrappers. The current workflow neither
+publishes an image nor runs the Docker-dependent Postgres e2e suite; e2e will be
+added later as its own visible job.
+
 ## Deployment Contract
 
 Application CI should publish an immutable container image. Platform

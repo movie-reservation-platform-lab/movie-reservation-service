@@ -15,17 +15,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: check
+  service-quality:
+    name: service-quality
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -33,8 +33,107 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run service checks
-        run: npm run check
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Run lint checks
+        run: npm run lint
+
+      - name: Run TypeScript typecheck
+        run: npm run typecheck
+
+  service-unit-tests:
+    name: service-unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - service-quality
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run service unit tests
+        run: npm run test:unit
+
+  service-integration-tests:
+    name: service-integration-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - service-quality
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run service integration tests
+        run: npm run test:integration
+
+  # Testcontainers/Postgres e2e remains a separately visible follow-up job.
+  service-build:
+    name: service-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - service-quality
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build service
         run: npm run build
+
+  container-image-check:
+    name: container-image-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - service-quality
+      - service-unit-tests
+      - service-integration-tests
+      - service-build
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Build local container image
+        env:
+          DOCKER_DEFAULT_PLATFORM: linux/amd64
+        run: npm run docker:build
