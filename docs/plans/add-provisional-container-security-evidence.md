@@ -758,3 +758,74 @@ Expected verification commands:
 - git diff --check
 - git status --short
 ```
+
+## 19. Hosted Gate Baseline Remediation Addendum (2026-08-17)
+
+### Finding and approved steering
+
+The first real `container-security-check` run correctly rejected the existing
+`node:24-bookworm-slim` runtime with six CRITICAL findings. The uploaded report
+contained four unfixed `perl-base` findings, one `zlib1g` finding marked
+`will_not_fix`, and one fixable `tar` finding inherited from npm in the Node
+base image. Updating Debian 12 cannot make this runtime pass the approved
+all-CRITICAL gate.
+
+The owner approved a production/debug target split:
+
+- the default scanned and published `runtime` target uses a digest-pinned
+  Distroless Node 24 Debian 13 `nonroot` image and starts Node directly;
+- build, production-dependency, and local `runtime-debug` targets use the same
+  digest-pinned Node 24 Debian 13 slim base for ABI compatibility;
+- local Docker Compose explicitly builds `runtime-debug`, preserving a normal
+  Debian shell and npm for developer troubleshooting;
+- the vulnerable debug target is local-only and must not be scanned as the
+  candidate, published, or deployed;
+- the runtime keeps only the compiled service, production dependencies, and
+  `package.json`, which is required by service metadata and schema-root
+  discovery;
+- the runtime workspace remains writable by the non-root user until generated
+  GraphQL schema output is separately hardened;
+- no CVE ignore, waiver, fail-open switch, or exception mechanism is added.
+  The governed exception lifecycle remains future platform work under
+  organization `.github#8` and the reusable implementation seam under
+  `.github#10`.
+
+This remediation is an approved implementation-reality correction to PR 3:
+the new required check cannot be activated successfully while the inherited
+runtime baseline is known to violate its policy.
+
+### Alternatives and decision
+
+- `apt-get upgrade`: rejected because Debian has no fix for the blocking Perl
+  findings and marks the zlib finding `will_not_fix`.
+- Node 24 Debian 13 slim runtime: rejected for publication because a current
+  one-off scan still reported four Perl findings plus npm's fixable `tar`.
+- Alpine runtime: rejected for now because it changes glibc to musl and still
+  inherited npm's `tar` finding.
+- Ad hoc Trivy ignores: rejected because the approved exception governance does
+  not exist yet.
+- Distroless Debian 13 nonroot: selected because it preserves glibc/Debian
+  compatibility, removes unused shell/package-manager/npm content, defaults to
+  least privilege, and had zero CRITICAL base findings in the one-off
+  comparison scan. The complete application image must still be scanned.
+
+### Implementation and verification
+
+1. Refactor `Dockerfile` into pinned build, production-dependency,
+   runtime-layout, `runtime-debug`, and final `runtime` stages.
+2. Make `npm run docker:build` explicitly select `runtime`; add a separate
+   debug-image command and point local Compose at `runtime-debug`.
+3. Extend repository contract tests for the pinned bases, explicit targets,
+   non-root users, direct production Node startup, and local-only debug target.
+4. Update README and DEVELOPMENT with the production/debug boundary, digest
+   update responsibility, and Distroless debugging tradeoff.
+5. Build the complete `linux/amd64` runtime image, verify its configured user,
+   start it with the in-memory local profile, and exercise `/health`.
+6. Run the same Trivy vulnerability scope against the complete local image and
+   require zero CRITICAL findings.
+7. Run focused repository tests, `npm run check`, and `git diff --check`.
+
+Rollback is a reviewed revert to the prior Node slim runtime. Such a rollback
+will make the security gate red again and therefore also requires temporarily
+withholding or removing the required-check ruleset entry; it does not justify
+silently weakening evaluator policy.

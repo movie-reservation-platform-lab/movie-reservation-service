@@ -44,9 +44,36 @@ describe('standalone repository extraction contract', () => {
     const compose = readTextFile('docker-compose.yml');
 
     expect(compose).toMatch(/build:\s*\n\s+context: \.\s*\n\s+dockerfile: Dockerfile/);
+    expect(compose).toContain('target: runtime-debug');
     expect(compose).toContain('./env_files/templates/in-docker/local-postgres.env.template');
     expect(compose).toContain('./observability/otel-collector.yaml');
     expect(compose).not.toContain('golden-path-movie-reservations');
+  });
+
+  it('separates the pinned debuggable image from the non-root production runtime', () => {
+    const dockerfile = readTextFile('Dockerfile');
+    const packageManifest = readJsonFile<PackageManifest>('package.json');
+    const nodeBuildImage =
+      'node:24-trixie-slim@sha256:0711b541c1c33a8a530ac4f0d391baa9a15b3d804695b1b24a47daa5fb60e74d';
+    const distrolessRuntimeImage =
+      'gcr.io/distroless/nodejs24-debian13:nonroot@sha256:fbbdda866ea71aef98c4abece17e3d61fbf820cc2ef3961522caa2478716171a';
+    const debugStageStart = dockerfile.indexOf('FROM ${NODE_BUILD_IMAGE} AS runtime-debug');
+    const runtimeStageStart = dockerfile.indexOf('FROM ${NODE_RUNTIME_IMAGE} AS runtime');
+    const debugStage = dockerfile.slice(debugStageStart, runtimeStageStart);
+    const runtimeStage = dockerfile.slice(runtimeStageStart);
+
+    expect(dockerfile).toContain(`ARG NODE_BUILD_IMAGE=${nodeBuildImage}`);
+    expect(dockerfile).toContain(`ARG NODE_RUNTIME_IMAGE=${distrolessRuntimeImage}`);
+    expect(debugStageStart).toBeGreaterThanOrEqual(0);
+    expect(runtimeStageStart).toBeGreaterThan(debugStageStart);
+    expect(debugStage).toContain('USER node');
+    expect(debugStage).toContain('CMD ["node", "--import"');
+    expect(runtimeStage).toContain('USER nonroot:nonroot');
+    expect(runtimeStage).toContain('COPY --from=runtime-layout --chown=nonroot:nonroot');
+    expect(runtimeStage).toContain('CMD ["--import"');
+    expect(runtimeStage).not.toContain('npm run start');
+    expect(packageManifest.scripts?.['docker:build']).toContain('--target runtime');
+    expect(packageManifest.scripts?.['docker:build:debug']).toContain('--target runtime-debug');
   });
 
   it('keeps every Compose-published port on the loopback interface', () => {

@@ -630,29 +630,51 @@ Build the baseline-compatible local image:
 npm run docker:build
 ```
 
+Build the local-only debuggable runtime image:
+
+```bash
+npm run docker:build:debug
+```
+
 `Dockerfile.dockerignore` uses an allowlist, so the build context contains only
 the Docker files, package manifests, `tsconfig.json`, and `src/`. The build
 stage uses the root lockfile and the existing `tsconfig.json`; a separate stage
-installs production dependencies. The runtime image receives only
-`package.json`, `dist/`, and production `node_modules`.
+installs production dependencies. Both use the same digest-pinned Node 24
+Debian 13 slim base so compiled dependencies retain a consistent glibc/Debian
+ABI. A runtime-layout stage collects only `package.json`, `dist/`, and
+production `node_modules`.
+
+The default `runtime` target copies that layout into a digest-pinned Distroless
+Node 24 Debian 13 `nonroot` image and invokes Node directly. It contains no
+shell, package manager, or npm CLI. The workspace is owned by the non-root user
+because the current GraphQL configuration writes `schema.gql` beside
+`package.json` at startup. Hosted PR scanning and canonical publication build
+this target.
+
+The `runtime-debug` target copies the same application layout into the pinned
+normal Node/Debian base, runs as its unprivileged `node` user, and retains shell
+and npm tooling. Docker Compose explicitly selects this target for local
+troubleshooting. It is local-only: do not publish, deploy, or treat its
+vulnerability result as candidate evidence. Use the production Distroless
+target for production-like demonstrations; switch to the debug target only
+when interactive diagnosis is needed.
+
+Base digests are intentionally reviewable inputs. Update their readable tags
+and digests together through a reviewed dependency PR; the longer-term update
+process remains tracked in repository issue #10.
 
 The host build also compiles `scripts/` and `test/` through the shared
 `tsconfig.json`. Those paths are intentionally absent from the production image
 context; any future non-`src/` input required to compile the service must update
 the allowlist in the same change.
 
-This extraction intentionally preserves the original image behavior:
-
-- the runtime uses the base image's default user;
-- generated GraphQL schema output remains `schema.gql` under the service root;
-- `db:migrate` and `db:migrate:status` remain source-mode commands and cannot
-  run inside the runtime image, which omits `src/` and the development-only
-  `tsx` runner.
-
-Non-root execution, runtime image smoke checks, schema-output hardening, and
-immutable-image migrations belong to dedicated follow-ups. The migration
-limitation must be resolved before using this image with a PostgreSQL/RDS-backed
-environment; it does not block the current in-memory smoke path.
+Generated GraphQL schema output remains `schema.gql` under the service root.
+`db:migrate` and `db:migrate:status` remain source-mode commands and cannot run
+inside the runtime image, which omits `src/` and the development-only `tsx`
+runner. Runtime smoke automation, schema-output hardening, and immutable-image
+migrations remain dedicated follow-ups. The migration limitation must be
+resolved before using this image with a PostgreSQL/RDS-backed environment; it
+does not block the current in-memory smoke path.
 
 ## Formatting And Linting
 

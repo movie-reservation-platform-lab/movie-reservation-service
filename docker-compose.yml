@@ -41,6 +41,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime-debug
     container_name: movie-reservation-service-api
     profiles:
       - api

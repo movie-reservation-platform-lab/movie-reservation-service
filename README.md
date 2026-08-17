@@ -58,9 +58,11 @@ npm run docker:build
 ```
 
 The build context is allowlisted to the package manifests, Docker files,
-TypeScript configuration, and `src/`. The runtime image contains the compiled
-service and production dependencies. See [DEVELOPMENT.md](DEVELOPMENT.md) for
-the deliberately preserved baseline limitations and their follow-ups.
+TypeScript configuration, and `src/`. The candidate runtime contains only the
+compiled service, production dependencies, and required package metadata on a
+digest-pinned Distroless Node 24 Debian 13 non-root base. Local Compose uses a
+separate normal Debian debug target with shell and npm access. See
+[DEVELOPMENT.md](DEVELOPMENT.md) for the target boundary and update process.
 
 ## Hosted CI
 
