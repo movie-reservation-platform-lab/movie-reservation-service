@@ -1,0 +1,39 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "ghcr.io/movie-reservation-platform-lab/movie-reservation-service@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "reservation-service (debian 13.1)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2099-1001",
+          "PkgName": "libcritical",
+          "InstalledVersion": "1.0.0",
+          "Severity": "CRITICAL"
+        },
+        {
+          "VulnerabilityID": "CVE-2099-1002",
+          "PkgName": "libhigh",
+          "InstalledVersion": "2.0.0",
+          "Severity": "HIGH"
+        }
+      ]
+    },
+    {
+      "Target": "Node.js",
+      "Class": "lang-pkgs",
+      "Type": "node-pkg",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "GHSA-aaaa-bbbb-cccc",
+          "PkgName": "critical-package",
+          "InstalledVersion": "3.0.0",
+          "Severity": "CRITICAL"
+        }
+      ]
+    }
+  ]
+}

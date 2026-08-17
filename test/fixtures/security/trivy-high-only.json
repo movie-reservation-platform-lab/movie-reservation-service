@@ -1,0 +1,39 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "ghcr.io/movie-reservation-platform-lab/movie-reservation-service@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "reservation-service (debian 13.1)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2099-0001",
+          "PkgName": "libexample",
+          "InstalledVersion": "1.0.0",
+          "Severity": "HIGH"
+        },
+        {
+          "VulnerabilityID": "CVE-2099-0002",
+          "PkgName": "libmedium",
+          "InstalledVersion": "2.0.0",
+          "Severity": "MEDIUM"
+        }
+      ]
+    },
+    {
+      "Target": "Node.js",
+      "Class": "lang-pkgs",
+      "Type": "node-pkg",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "GHSA-xxxx-yyyy-zzzz",
+          "PkgName": "example-package",
+          "InstalledVersion": "3.0.0",
+          "Severity": "HIGH"
+        }
+      ]
+    }
+  ]
+}
