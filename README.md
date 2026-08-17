@@ -72,8 +72,10 @@ authority:
 - `service-unit-tests` runs unit tests;
 - `service-integration-tests` runs integration tests;
 - `service-build` compiles the service;
-- `container-image-check` builds the baseline-compatible image after the four
-  service checks pass, explicitly targeting `linux/amd64`.
+- `container-security-check` starts after quality, builds the
+  baseline-compatible `linux/amd64` image, and scans its OS and library
+  packages with Trivy. CRITICAL findings fail the job; HIGH findings remain
+  visible and non-blocking. The complete JSON report is retained for 14 days.
 
 Hosted jobs call the focused npm scripts directly. `npm run check` and
 `npm run ci` remain local convenience wrappers. A push to `main` in this
@@ -82,9 +84,10 @@ image check with `publish-candidate`. That job alone can publish and attest a
 `linux/amd64` image in GHCR. The Docker-dependent Postgres e2e suite is not yet
 hosted; it will be added later as its own visible job.
 
-Candidate preparation and handoff recording use tested repo-local composite
-actions, leaving the workflow focused on orchestration and explicit
-permissions. These local actions are the migration seam for the planned
+Container vulnerability evaluation, candidate preparation, and handoff
+recording use tested repo-local composite actions, leaving the workflow focused
+on orchestration and explicit permissions. These local actions are the
+migration seam for the planned
 [organization CI building blocks](https://github.com/movie-reservation-platform-lab/.github/issues/5).
 
 ## Deployment Contract

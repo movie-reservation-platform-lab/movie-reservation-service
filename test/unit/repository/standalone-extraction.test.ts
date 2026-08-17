@@ -67,19 +67,22 @@ describe('standalone repository extraction contract', () => {
       'service-integration-tests',
       'service-build',
     ] as const;
-    const expectedJobs = [...serviceJobs, 'container-image-check', 'publish-candidate'] as const;
+    const expectedJobs = [...serviceJobs, 'container-security-check', 'publish-candidate'] as const;
     const actionReferences = [...workflow.matchAll(/^\s+uses:\s+(\S+)/gm)].flatMap((match) =>
       match[1] === undefined ? [] : [match[1]],
     );
     const allowedExternalActionReferences = [
       'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803',
       'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38',
+      'aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25',
+      'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
       'docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f',
       'docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9',
       'docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8',
       'actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a',
     ] as const;
     const allowedLocalActionReferences = [
+      './.github/actions/evaluate-container-vulnerabilities',
       './.github/actions/prepare-container-candidate',
       './.github/actions/record-container-candidate',
     ] as const;
@@ -120,19 +123,60 @@ describe('standalone repository extraction contract', () => {
       expect(readWorkflowJob(workflow, job)).toMatch(/^ {4}needs:\s*\n {6}- service-quality$/m);
     }
 
-    const containerImageJob = readWorkflowJob(workflow, 'container-image-check');
-    expect(containerImageJob).toContain('DOCKER_DEFAULT_PLATFORM: linux/amd64');
-    expect(containerImageJob).toContain("github.event_name != 'push'");
-    expect(containerImageJob).toContain("github.ref != 'refs/heads/main'");
-    expect(containerImageJob).toContain(
+    const containerSecurityJob = readWorkflowJob(workflow, 'container-security-check');
+    expect(containerSecurityJob).toContain('DOCKER_DEFAULT_PLATFORM: linux/amd64');
+    expect(containerSecurityJob).toContain("github.event_name != 'push'");
+    expect(containerSecurityJob).toContain("github.ref != 'refs/heads/main'");
+    expect(containerSecurityJob).toContain(
       "github.repository != 'movie-reservation-platform-lab/movie-reservation-service'",
     );
-    expect(containerImageJob).toMatch(/permissions:\s*\n\s+contents: read/);
-    expect(containerImageJob).not.toMatch(/^\s+[a-z-]+:\s+write$/m);
-    expect(containerImageJob).not.toMatch(/docker\/login-action|docker\/build-push-action|push: true/);
-    for (const prerequisite of serviceJobs) {
-      expect(containerImageJob).toContain(`- ${prerequisite}`);
+    expect(containerSecurityJob).toMatch(/^ {4}needs:\s*\n {6}- service-quality$/m);
+    expect(containerSecurityJob).toMatch(/permissions:\s*\n\s+contents: read/);
+    expect(containerSecurityJob).not.toMatch(/^\s+[a-z-]+:\s+write$/m);
+    expect(containerSecurityJob).not.toMatch(/docker\/login-action|docker\/build-push-action|push: true/);
+    for (const unrelatedJob of ['service-unit-tests', 'service-integration-tests', 'service-build'] as const) {
+      expect(containerSecurityJob).not.toContain(`- ${unrelatedJob}`);
     }
+  });
+
+  it('scans the local PR image and retains complete JSON evidence', () => {
+    const workflow = readTextFile('.github/workflows/ci.yml');
+    const containerSecurityJob = readWorkflowJob(workflow, 'container-security-check');
+    const localImage = 'movie-reservation-service:local';
+    const reportPath = 'security-evidence/reservation-service-vulnerabilities.json';
+
+    expect(containerSecurityJob).toContain('run: npm run docker:build');
+    expect(containerSecurityJob).toContain('uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25');
+    expect(containerSecurityJob).toContain('scan-type: image');
+    expect(containerSecurityJob).toContain(`image-ref: ${localImage}`);
+    expect(containerSecurityJob).toContain('scanners: vuln');
+    expect(containerSecurityJob).toContain('vuln-type: os,library');
+    expect(containerSecurityJob).toContain('format: json');
+    expect(containerSecurityJob).toContain(`output: ${reportPath}`);
+    expect(containerSecurityJob).toContain('severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL');
+    expect(containerSecurityJob).toContain('ignore-unfixed: false');
+    expect(containerSecurityJob).toContain("exit-code: '0'");
+    expect(containerSecurityJob).toContain('timeout: 5m');
+    expect(containerSecurityJob).toContain('uses: ./.github/actions/evaluate-container-vulnerabilities');
+    expect(containerSecurityJob).toContain(`report-path: ${reportPath}`);
+    expect(containerSecurityJob).toContain(`expected-image: ${localImage}`);
+    expect(containerSecurityJob).toContain('subject-kind: local');
+    expect(containerSecurityJob).toContain('uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a');
+    expect(containerSecurityJob).toContain('if: ${{ !cancelled() }}');
+    expect(containerSecurityJob).toContain(`path: ${reportPath}`);
+    expect(containerSecurityJob).toContain('if-no-files-found: error');
+    expect(containerSecurityJob).toContain('retention-days: 14');
+    expect(containerSecurityJob).not.toMatch(/cyclonedx|sbom/i);
+
+    const buildIndex = containerSecurityJob.indexOf('run: npm run docker:build');
+    const scanIndex = containerSecurityJob.indexOf('uses: aquasecurity/trivy-action@');
+    const evaluationIndex = containerSecurityJob.indexOf('uses: ./.github/actions/evaluate-container-vulnerabilities');
+    const uploadIndex = containerSecurityJob.indexOf('uses: actions/upload-artifact@');
+
+    expect(buildIndex).toBeGreaterThanOrEqual(0);
+    expect(scanIndex).toBeGreaterThan(buildIndex);
+    expect(evaluationIndex).toBeGreaterThan(scanIndex);
+    expect(uploadIndex).toBeGreaterThan(evaluationIndex);
   });
 
   it('publishes and attests candidates only for the canonical main branch', () => {
@@ -178,9 +222,19 @@ describe('standalone repository extraction contract', () => {
     expect(publisher).not.toMatch(/^\s+run:\s+\|/m);
   });
 
-  it('exposes script-backed local actions through explicit publication contracts', () => {
+  it('exposes script-backed local actions through explicit workflow contracts', () => {
+    const evaluateAction = readTextFile('.github/actions/evaluate-container-vulnerabilities/action.yml');
     const prepareAction = readTextFile('.github/actions/prepare-container-candidate/action.yml');
     const recordAction = readTextFile('.github/actions/record-container-candidate/action.yml');
+
+    expect(evaluateAction).toContain('using: composite');
+    for (const input of ['report-path', 'expected-image', 'subject-kind', 'evidence-artifact-name'] as const) {
+      expect(evaluateAction).toContain(`${input}:`);
+    }
+    for (const output of ['high-count', 'critical-count', 'policy-result'] as const) {
+      expect(evaluateAction).toContain(`value: \${{ steps.evaluate.outputs.${output} }}`);
+    }
+    expect(evaluateAction).toContain('run: node "${{ github.action_path }}/evaluate.mjs"');
 
     expect(prepareAction).toContain('using: composite');
     expect(prepareAction).toContain('expected-repository:');

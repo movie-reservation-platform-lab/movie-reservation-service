@@ -495,8 +495,9 @@ GitHub Actions keeps each validation concern visible:
 - `service-unit-tests`: `test:unit` after quality passes;
 - `service-integration-tests`: `test:integration` after quality passes;
 - `service-build`: `build` after quality passes;
-- `container-image-check`: a read-only `docker:build` for `linux/amd64` after
-  all four service jobs pass on pull requests, manual runs, and forks;
+- `container-security-check`: a read-only local `linux/amd64` image build and
+  vulnerability scan after quality passes on pull requests, manual runs, and
+  forks; it runs in parallel with the remaining service jobs;
 - `publish-candidate`: a `linux/amd64` GHCR build and provenance attestation
   after the same four jobs pass on a canonical-repository push to `main`.
 
@@ -504,18 +505,23 @@ Each service job installs from `package-lock.json` independently with `npm ci`.
 Those jobs may update GitHub's npm download cache, but they have no repository,
 package, or deployment write authority.
 The read-only image job receives only `contents: read`; it does not log in to a
-registry or publish an image. Draft and ready pull requests, manual workflow
-dispatches, and forks always use this path. Only `publish-candidate` receives
-`packages: write`, `id-token: write`, and `attestations: write`, and it uses the
-ephemeral `GITHUB_TOKEN` rather than a PAT or separately managed signing key.
+registry or publish an image. It scans the locally tagged image and retains the
+complete Trivy JSON report as a 14-day workflow artifact. Draft and ready pull
+requests, manual workflow dispatches, and forks always use this path. Only
+`publish-candidate` receives `packages: write`, `id-token: write`, and
+`attestations: write`, and it uses the ephemeral `GITHUB_TOKEN` rather than a
+PAT or separately managed signing key.
 
-The publisher keeps imperative policy out of the workflow YAML. The repo-local
-`prepare-container-candidate` composite action validates the canonical event,
-constructs attempt-unique metadata, and rejects a stale `main` revision before
-registry login. The `record-container-candidate` action validates that the
-digest and tag match the source/run identity before writing the immutable
-handoff summary. Their Bash implementations are dependency-free and covered by
-unit tests with temporary GitHub output files and a fake remote `git` command.
+Repo-local composite actions keep policy and validation out of the workflow
+YAML. `evaluate-container-vulnerabilities` validates that Trivy JSON belongs to
+the expected local tag or immutable digest, writes the security summary, and
+applies the provisional CRITICAL-only policy. The publisher's
+`prepare-container-candidate` action validates the canonical event, constructs
+attempt-unique metadata, and rejects a stale `main` revision before registry
+login. `record-container-candidate` validates that the digest and tag match the
+source/run identity before writing the immutable handoff summary. Their
+dependency-free implementations are covered by focused subprocess and workflow
+contract tests.
 
 These actions are an intentional local migration seam, not the final
 organization API. [The shared CI building-block issue](https://github.com/movie-reservation-platform-lab/.github/issues/5)
@@ -526,11 +532,35 @@ Keep Testcontainers/Postgres e2e separate when it is added later so its Docker
 dependency, runtime, and failures remain independently visible. Do not hide it
 inside `service-quality`, `npm run check`, or another hosted wrapper.
 
-The pull-request workflow replaces the former `check` status with five stable
-check names. Before merging the publication change, configure the `main`
-ruleset to require a pull request and all five names. If a repository still
-requires the legacy `check`, replace it during that update and keep pull-request
-enforcement enabled throughout the transition.
+The pull-request workflow exposes five stable check names. Workflow YAML alone
+does not block a merge: after a pull request first produces a successful
+`container-security-check`, update the `main` ruleset to require that exact
+name. If `container-image-check` is currently required, replace it with the new
+name before merging this change while keeping pull-request enforcement enabled.
+During a prolonged scanner integration outage, a controlled maintainer may
+temporarily remove the required-check entry; the evaluator deliberately has no
+fail-open switch.
+
+### Pull-request container security evidence
+
+The PR job builds `movie-reservation-service:local` once and asks Trivy to scan
+OS and application/library vulnerabilities. Fixed and unfixed findings are
+included, and every severity remains in the JSON report. Trivy produces
+evidence without making the final admission decision; the repo-local evaluator
+fails the job when one or more CRITICAL findings exist. HIGH findings are
+reported but do not block this provisional gate.
+
+When CRITICAL findings exist, the job summary lists each vulnerability ID,
+package, installed version, and fixed version, or states that no fix was
+reported. The complete JSON report is uploaded with an attempt-unique name and
+retained for 14 days, including after a policy failure. Scanner, database,
+missing-report, malformed-report, and report-subject failures fail closed.
+
+This PR path intentionally does not publish an image, use registry credentials,
+or generate CycloneDX release evidence. Secret, configuration/IaC, license, and
+source scanning are also outside this provisional control. The job becomes a
+merge gate only when its exact check name is required by the repository
+ruleset.
 
 ### Candidate publication and first-release checks
 

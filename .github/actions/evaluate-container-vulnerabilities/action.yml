@@ -1,12 +1,15 @@
 name: Evaluate container vulnerabilities
-description: Validate digest-bound Trivy JSON and apply the provisional CRITICAL-only candidate policy.
+description: Validate subject-bound Trivy JSON and apply the provisional CRITICAL-only policy.
 
 inputs:
   report-path:
     description: Trivy JSON vulnerability report path relative to the workspace.
     required: true
-  immutable-image:
-    description: Expected digest-pinned GHCR image reference.
+  expected-image:
+    description: Exact local tag or digest-pinned GHCR image expected in the Trivy report.
+    required: true
+  subject-kind:
+    description: Expected image kind, either local or immutable-ghcr.
     required: true
   evidence-artifact-name:
     description: Workflow artifact name containing the detailed security evidence.
@@ -31,6 +34,7 @@ runs:
       shell: bash
       env:
         REPORT_PATH: ${{ inputs.report-path }}
-        IMMUTABLE_IMAGE: ${{ inputs.immutable-image }}
+        EXPECTED_IMAGE: ${{ inputs.expected-image }}
+        SUBJECT_KIND: ${{ inputs.subject-kind }}
         EVIDENCE_ARTIFACT_NAME: ${{ inputs.evidence-artifact-name }}
       run: node "${{ github.action_path }}/evaluate.mjs"

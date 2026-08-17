@@ -117,8 +117,8 @@ jobs:
       - name: Build service
         run: npm run build
 
-  container-image-check:
-    name: container-image-check
+  container-security-check:
+    name: container-security-check
     if: >-
       github.event_name != 'push' ||
       github.ref != 'refs/heads/main' ||
@@ -127,9 +127,6 @@ jobs:
     timeout-minutes: 30
     needs:
       - service-quality
-      - service-unit-tests
-      - service-integration-tests
-      - service-build
     permissions:
       contents: read
 
@@ -146,6 +143,43 @@ jobs:
         env:
           DOCKER_DEFAULT_PLATFORM: linux/amd64
         run: npm run docker:build
+
+      - name: Prepare security evidence directory
+        run: mkdir -p security-evidence
+
+      - name: Scan local container image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: movie-reservation-service:local
+          scanners: vuln
+          vuln-type: os,library
+          format: json
+          output: security-evidence/reservation-service-vulnerabilities.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          hide-progress: true
+          exit-code: '0'
+          timeout: 5m
+
+      - name: Evaluate provisional vulnerability policy
+        uses: ./.github/actions/evaluate-container-vulnerabilities
+        with:
+          report-path: security-evidence/reservation-service-vulnerabilities.json
+          expected-image: movie-reservation-service:local
+          subject-kind: local
+          evidence-artifact-name: >-
+            reservation-service-pr-vulnerability-report-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+
+      - name: Upload vulnerability report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: >-
+            reservation-service-pr-vulnerability-report-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: security-evidence/reservation-service-vulnerabilities.json
+          if-no-files-found: error
+          retention-days: 14
 
   publish-candidate:
     name: publish-candidate
