@@ -1,0 +1,20 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "movie-reservation-service:local",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "reservation-service (debian 13.1)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2099-2001",
+          "PkgName": "liblocal-example",
+          "InstalledVersion": "1.0.0",
+          "Severity": "HIGH"
+        }
+      ]
+    }
+  ]
+}

@@ -2,31 +2,40 @@ import { appendFileSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 const immutableGhcrImagePattern = /^ghcr\.io\/[a-z0-9_.-]+\/[a-z0-9_.-]+@sha256:[0-9a-f]{64}$/;
+const localImagePattern =
+  /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 const artifactNamePattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
 
 /**
  * @typedef {{ ArtifactName: string, Results: unknown }} TrivyReport
- * @typedef {{ Severity: string }} Vulnerability
  * @typedef {{
+ *   fixedVersion?: string,
+ *   installedVersion: string,
+ *   packageName: string,
+ *   severity: string,
+ *   vulnerabilityId: string,
+ * }} Vulnerability
+ * @typedef {{
+ *   criticalFindings: Vulnerability[],
  *   criticalCount: number,
  *   evidenceArtifactName: string,
+ *   expectedImage: string,
  *   highCount: number,
- *   immutableImage: string,
  *   policyResult: string,
+ *   subjectKind: 'immutable-ghcr' | 'local',
  * }} SummaryValues
  */
 
 try {
   const reportPathInput = requireEnvironmentVariable('REPORT_PATH');
-  const immutableImage = requireEnvironmentVariable('IMMUTABLE_IMAGE');
+  const expectedImage = requireEnvironmentVariable('EXPECTED_IMAGE');
+  const subjectKind = parseSubjectKind(requireEnvironmentVariable('SUBJECT_KIND'));
   const evidenceArtifactName = requireEnvironmentVariable('EVIDENCE_ARTIFACT_NAME');
   const githubOutput = requireEnvironmentVariable('GITHUB_OUTPUT');
   const githubStepSummary = requireEnvironmentVariable('GITHUB_STEP_SUMMARY');
   const githubWorkspace = requireEnvironmentVariable('GITHUB_WORKSPACE');
 
-  if (!immutableGhcrImagePattern.test(immutableImage)) {
-    throw new Error(`Expected image is not an immutable GHCR reference: ${immutableImage}`);
-  }
+  validateExpectedImage(expectedImage, subjectKind);
 
   if (!artifactNamePattern.test(evidenceArtifactName)) {
     throw new Error(`Evidence artifact name contains unsupported characters: ${evidenceArtifactName}`);
@@ -35,15 +44,16 @@ try {
   const reportPath = resolveWorkspaceFile(reportPathInput, githubWorkspace);
   const report = readTrivyReport(reportPath);
 
-  if (report.ArtifactName !== immutableImage) {
+  if (report.ArtifactName !== expectedImage) {
     throw new Error(
-      `Trivy report artifact ${String(report.ArtifactName)} does not match expected image ${immutableImage}`,
+      `Trivy report artifact ${String(report.ArtifactName)} does not match expected image ${expectedImage}`,
     );
   }
 
   const vulnerabilities = collectVulnerabilities(report.Results);
-  const highCount = vulnerabilities.filter((vulnerability) => vulnerability.Severity === 'HIGH').length;
-  const criticalCount = vulnerabilities.filter((vulnerability) => vulnerability.Severity === 'CRITICAL').length;
+  const highCount = vulnerabilities.filter((vulnerability) => vulnerability.severity === 'HIGH').length;
+  const criticalFindings = vulnerabilities.filter((vulnerability) => vulnerability.severity === 'CRITICAL');
+  const criticalCount = criticalFindings.length;
   const policyResult = criticalCount === 0 ? 'passed' : 'failed';
 
   appendFileSync(
@@ -52,7 +62,15 @@ try {
   );
   appendFileSync(
     githubStepSummary,
-    renderSummary({ criticalCount, evidenceArtifactName, highCount, immutableImage, policyResult }),
+    renderSummary({
+      criticalCount,
+      criticalFindings,
+      evidenceArtifactName,
+      expectedImage,
+      highCount,
+      policyResult,
+      subjectKind,
+    }),
   );
 
   if (criticalCount > 0) {
@@ -66,6 +84,33 @@ try {
 
   reportWorkflowError(`Unable to evaluate container vulnerability evidence: ${message}`);
   process.exitCode = 1;
+}
+
+/**
+ * @param {string} value
+ * @returns {'immutable-ghcr' | 'local'}
+ */
+function parseSubjectKind(value) {
+  if (value === 'immutable-ghcr' || value === 'local') {
+    return value;
+  }
+
+  throw new Error(`Unsupported image subject kind: ${value}`);
+}
+
+/**
+ * @param {string} expectedImage
+ * @param {'immutable-ghcr' | 'local'} subjectKind
+ * @returns {void}
+ */
+function validateExpectedImage(expectedImage, subjectKind) {
+  if (subjectKind === 'immutable-ghcr' && !immutableGhcrImagePattern.test(expectedImage)) {
+    throw new Error(`Expected image is not an immutable GHCR reference: ${expectedImage}`);
+  }
+
+  if (subjectKind === 'local' && !localImagePattern.test(expectedImage)) {
+    throw new Error(`Expected image is not a supported local container reference: ${expectedImage}`);
+  }
 }
 
 /**
@@ -181,38 +226,122 @@ function parseVulnerability(vulnerabilityValue, resultIndex, vulnerabilityIndex)
     throw new Error(`Trivy vulnerability at result ${resultIndex}, index ${vulnerabilityIndex} must be an object.`);
   }
 
-  if (typeof vulnerabilityValue.Severity !== 'string' || vulnerabilityValue.Severity.length === 0) {
-    throw new Error(`Trivy vulnerability at result ${resultIndex}, index ${vulnerabilityIndex} has no severity.`);
+  const vulnerabilityId = requireReportString(vulnerabilityValue, 'VulnerabilityID', resultIndex, vulnerabilityIndex);
+  const packageName = requireReportString(vulnerabilityValue, 'PkgName', resultIndex, vulnerabilityIndex);
+  const installedVersion = requireReportString(vulnerabilityValue, 'InstalledVersion', resultIndex, vulnerabilityIndex);
+  const severity = requireReportString(vulnerabilityValue, 'Severity', resultIndex, vulnerabilityIndex).toUpperCase();
+  const fixedVersionValue = vulnerabilityValue.FixedVersion;
+
+  if (fixedVersionValue !== undefined && typeof fixedVersionValue !== 'string') {
+    throw new Error(
+      `Trivy vulnerability at result ${resultIndex}, index ${vulnerabilityIndex} has no valid FixedVersion.`,
+    );
   }
 
-  return { Severity: vulnerabilityValue.Severity.toUpperCase() };
+  return {
+    fixedVersion:
+      typeof fixedVersionValue === 'string' && fixedVersionValue.trim().length > 0 ? fixedVersionValue : undefined,
+    installedVersion,
+    packageName,
+    severity,
+    vulnerabilityId,
+  };
+}
+
+/**
+ * @param {Record<string, unknown>} vulnerability
+ * @param {string} field
+ * @param {number} resultIndex
+ * @param {number} vulnerabilityIndex
+ * @returns {string}
+ */
+function requireReportString(vulnerability, field, resultIndex, vulnerabilityIndex) {
+  const value = vulnerability[field];
+
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`Trivy vulnerability at result ${resultIndex}, index ${vulnerabilityIndex} has no valid ${field}.`);
+  }
+
+  return value;
 }
 
 /**
  * @param {SummaryValues} values
  * @returns {string}
  */
-function renderSummary({ criticalCount, evidenceArtifactName, highCount, immutableImage, policyResult }) {
+function renderSummary({
+  criticalCount,
+  criticalFindings,
+  evidenceArtifactName,
+  expectedImage,
+  highCount,
+  policyResult,
+  subjectKind,
+}) {
   const highDecision =
     highCount === 0
       ? 'No HIGH findings require an admission decision for this candidate.'
       : 'HIGH findings do not fail this provisional gate, but admission requires explicit, recorded operator approval.';
+  const subjectLabel = subjectKind === 'immutable-ghcr' ? 'Immutable candidate' : 'Local PR image';
 
-  return [
+  const summary = [
     '### Provisional container security evidence',
     '',
-    `- Immutable candidate: \`${immutableImage}\``,
+    `- ${subjectLabel}: \`${expectedImage}\``,
     '- Scanner: `Trivy`',
     `- HIGH findings: **${highCount}**`,
     `- CRITICAL findings: **${criticalCount}**`,
     `- Provisional policy: **${policyResult.toUpperCase()}**`,
     `- Downloadable evidence artifact: \`${evidenceArtifactName}\``,
     '',
+  ];
+
+  if (criticalFindings.length > 0) {
+    summary.push(
+      '#### CRITICAL findings',
+      '',
+      '| Vulnerability | Package | Installed version | Fixed version |',
+      '| --- | --- | --- | --- |',
+      ...criticalFindings.map(renderCriticalFinding),
+      '',
+    );
+  }
+
+  summary.push(
     highDecision,
     '',
     'This CRITICAL-only control is provisional under [service issue #19](https://github.com/movie-reservation-platform-lab/movie-reservation-service/issues/19) pending the durable [platform policy in `.github#8`](https://github.com/movie-reservation-platform-lab/.github/issues/8).',
     '',
-  ].join('\n');
+  );
+
+  return summary.join('\n');
+}
+
+/**
+ * @param {Vulnerability} vulnerability
+ * @returns {string}
+ */
+function renderCriticalFinding(vulnerability) {
+  const fixedVersion =
+    vulnerability.fixedVersion === undefined
+      ? '<em>no fix reported</em>'
+      : `<code>${escapeSummaryValue(vulnerability.fixedVersion)}</code>`;
+
+  return `| <code>${escapeSummaryValue(vulnerability.vulnerabilityId)}</code> | <code>${escapeSummaryValue(vulnerability.packageName)}</code> | <code>${escapeSummaryValue(vulnerability.installedVersion)}</code> | ${fixedVersion} |`;
+}
+
+/**
+ * @param {string} value
+ * @returns {string}
+ */
+function escapeSummaryValue(value) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('|', '&#124;')
+    .replaceAll('\r', '&#13;')
+    .replaceAll('\n', '&#10;');
 }
 
 /**

@@ -9,6 +9,7 @@ const repositoryRoot = process.cwd();
 const evaluator = join(repositoryRoot, '.github', 'actions', 'evaluate-container-vulnerabilities', 'evaluate.mjs');
 const fixtures = join(repositoryRoot, 'test', 'fixtures', 'security');
 const immutableImage = `ghcr.io/movie-reservation-platform-lab/movie-reservation-service@sha256:${'b'.repeat(64)}`;
+const localImage = 'movie-reservation-service:local';
 const evidenceArtifactName = 'reservation-service-security-evidence-123-attempt-2';
 
 let temporaryDirectory = '';
@@ -22,6 +23,37 @@ afterEach(() => {
 });
 
 describe('provisional container vulnerability policy', () => {
+  it('keeps the local Dockerized check aligned with the hosted scan and evaluator', () => {
+    const packageManifest = JSON.parse(readFileSync(join(repositoryRoot, 'package.json'), 'utf8')) as {
+      readonly scripts?: Readonly<Record<string, string>>;
+    };
+    const localCheck = readFileSync(join(repositoryRoot, 'scripts', 'container-security-check.sh'), 'utf8');
+    const workflow = readFileSync(join(repositoryRoot, '.github', 'workflows', 'ci.yml'), 'utf8');
+    const gitignore = readFileSync(join(repositoryRoot, '.gitignore'), 'utf8');
+    const pinnedTrivyImage =
+      'docker.io/aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e';
+
+    expect(packageManifest.scripts?.['container:security-check']).toBe('bash scripts/container-security-check.sh');
+    expect(localCheck).toContain(`readonly trivy_image='${pinnedTrivyImage}'`);
+    expect(localCheck).toContain("readonly local_image='movie-reservation-service:local'");
+    expect(localCheck).toContain('DOCKER_DEFAULT_PLATFORM=linux/amd64 npm run docker:build');
+    expect(localCheck).toContain('--scanners vuln');
+    expect(localCheck).toContain('--vuln-type os,library');
+    expect(localCheck).toContain('--format json');
+    expect(localCheck).toContain('--severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL');
+    expect(localCheck).toContain('--ignore-unfixed=false');
+    expect(localCheck).toContain('--exit-code 0');
+    expect(localCheck).toContain('--timeout 5m');
+    expect(localCheck).toContain('.github/actions/evaluate-container-vulnerabilities/evaluate.mjs');
+    expect(localCheck).toContain('EXPECTED_IMAGE="${local_image}"');
+    expect(localCheck).toContain("SUBJECT_KIND='local'");
+    expect(localCheck).toContain('exit "${evaluation_status}"');
+    expect(localCheck).not.toContain('--exit-code 1');
+    expect(workflow).toContain('uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25');
+    expect(workflow).toContain('version: v0.70.0');
+    expect(gitignore).toMatch(/^security-evidence\/$/m);
+  });
+
   it('reports HIGH findings without failing the candidate', () => {
     const evaluation = runEvaluator(join(fixtures, 'trivy-high-only.json'));
 
@@ -42,6 +74,22 @@ describe('provisional container vulnerability policy', () => {
     expect(evaluation.summary).toContain(`\`${evidenceArtifactName}\``);
   });
 
+  it('evaluates a local PR image when the report is bound to its exact tag', () => {
+    const evaluation = runEvaluator(join(fixtures, 'trivy-local-high-only.json'), {
+      EXPECTED_IMAGE: localImage,
+      SUBJECT_KIND: 'local',
+    });
+
+    expect(evaluation.result.status).toBe(0);
+    expect(evaluation.result.stderr).toBe('');
+    expect(readKeyValueFile(evaluation.githubOutput)).toEqual({
+      'critical-count': '0',
+      'high-count': '1',
+      'policy-result': 'passed',
+    });
+    expect(evaluation.summary).toContain(`- Local PR image: \`${localImage}\``);
+  });
+
   it('writes the evidence summary before failing on CRITICAL findings', () => {
     const evaluation = runEvaluator(join(fixtures, 'trivy-critical.json'));
 
@@ -57,6 +105,14 @@ describe('provisional container vulnerability policy', () => {
     expect(evaluation.summary).toContain('- HIGH findings: **1**');
     expect(evaluation.summary).toContain('- CRITICAL findings: **2**');
     expect(evaluation.summary).toContain('- Provisional policy: **FAILED**');
+    expect(evaluation.summary).toContain('#### CRITICAL findings');
+    expect(evaluation.summary).toContain(
+      '| <code>CVE-2099-1001</code> | <code>libcritical</code> | <code>1.0.0</code> | <code>1.0.1</code> |',
+    );
+    expect(evaluation.summary).toContain(
+      '| <code>GHSA-aaaa-bbbb-cccc</code> | <code>critical&#124;package&lt;script&gt;</code> | <code>3.0.0</code> | <em>no fix reported</em> |',
+    );
+    expect(evaluation.summary).not.toContain('<script>');
   });
 
   it('passes a structurally valid report with no findings', () => {
@@ -73,7 +129,7 @@ describe('provisional container vulnerability policy', () => {
 
   it('fails closed when the report belongs to a different digest', () => {
     const evaluation = runEvaluator(join(fixtures, 'trivy-high-only.json'), {
-      IMMUTABLE_IMAGE: `${immutableImage.slice(0, -1)}c`,
+      EXPECTED_IMAGE: `${immutableImage.slice(0, -1)}c`,
     });
 
     expect(evaluation.result.status).toBe(1);
@@ -94,6 +150,17 @@ describe('provisional container vulnerability policy', () => {
     expect(readFileSync(evaluation.githubOutput, 'utf8')).toBe('');
     expect(evaluation.summary).toBe('');
   });
+
+  it('rejects a local tag when the declared subject kind is immutable', () => {
+    const evaluation = runEvaluator(join(fixtures, 'trivy-local-high-only.json'), {
+      EXPECTED_IMAGE: localImage,
+    });
+
+    expect(evaluation.result.status).toBe(1);
+    expect(evaluation.result.stderr).toContain('Expected image is not an immutable GHCR reference');
+    expect(readFileSync(evaluation.githubOutput, 'utf8')).toBe('');
+    expect(evaluation.summary).toBe('');
+  });
 });
 
 interface Evaluation {
@@ -110,11 +177,12 @@ function runEvaluator(reportPath: string, environmentOverrides: NodeJS.ProcessEn
     env: {
       ...process.env,
       EVIDENCE_ARTIFACT_NAME: evidenceArtifactName,
+      EXPECTED_IMAGE: immutableImage,
       GITHUB_OUTPUT: githubOutput,
       GITHUB_STEP_SUMMARY: githubStepSummary,
       GITHUB_WORKSPACE: repositoryRoot,
-      IMMUTABLE_IMAGE: immutableImage,
       REPORT_PATH: reportPath,
+      SUBJECT_KIND: 'immutable-ghcr',
       ...environmentOverrides,
     },
   });

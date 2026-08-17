@@ -758,3 +758,147 @@ Expected verification commands:
 - git diff --check
 - git status --short
 ```
+
+## 19. Hosted Gate Baseline Remediation Addendum (2026-08-17)
+
+### Finding and approved steering
+
+The first real `container-security-check` run correctly rejected the existing
+`node:24-bookworm-slim` runtime with six CRITICAL findings. The uploaded report
+contained four unfixed `perl-base` findings, one `zlib1g` finding marked
+`will_not_fix`, and one fixable `tar` finding inherited from npm in the Node
+base image. Updating Debian 12 cannot make this runtime pass the approved
+all-CRITICAL gate.
+
+The owner approved a production/debug target split:
+
+- the default scanned and published `runtime` target uses a digest-pinned
+  Distroless Node 24 Debian 13 `nonroot` image and starts Node directly;
+- build, production-dependency, and local `runtime-debug` targets use the same
+  digest-pinned Node 24 Debian 13 slim base for ABI compatibility;
+- local Docker Compose explicitly builds `runtime-debug`, preserving a normal
+  Debian shell and npm for developer troubleshooting;
+- the vulnerable debug target is local-only and must not be scanned as the
+  candidate, published, or deployed;
+- the runtime keeps only the compiled service, production dependencies, and
+  `package.json`, which is required by service metadata and schema-root
+  discovery;
+- the runtime workspace remains writable by the non-root user until generated
+  GraphQL schema output is separately hardened;
+- no CVE ignore, waiver, fail-open switch, or exception mechanism is added.
+  The governed exception lifecycle remains future platform work under
+  organization `.github#8` and the reusable implementation seam under
+  `.github#10`.
+
+This remediation is an approved implementation-reality correction to PR 3:
+the new required check cannot be activated successfully while the inherited
+runtime baseline is known to violate its policy.
+
+### Alternatives and decision
+
+- `apt-get upgrade`: rejected because Debian has no fix for the blocking Perl
+  findings and marks the zlib finding `will_not_fix`.
+- Node 24 Debian 13 slim runtime: rejected for publication because a current
+  one-off scan still reported four Perl findings plus npm's fixable `tar`.
+- Alpine runtime: rejected for now because it changes glibc to musl and still
+  inherited npm's `tar` finding.
+- Ad hoc Trivy ignores: rejected because the approved exception governance does
+  not exist yet.
+- Distroless Debian 13 nonroot: selected because it preserves glibc/Debian
+  compatibility, removes unused shell/package-manager/npm content, defaults to
+  least privilege, and had zero CRITICAL base findings in the one-off
+  comparison scan. The complete application image must still be scanned.
+
+### Implementation and verification
+
+1. Refactor `Dockerfile` into pinned build, production-dependency,
+   runtime-layout, `runtime-debug`, and final `runtime` stages.
+2. Make `npm run docker:build` explicitly select `runtime`; add a separate
+   debug-image command and point local Compose at `runtime-debug`.
+3. Extend repository contract tests for the pinned bases, explicit targets,
+   non-root users, direct production Node startup, and local-only debug target.
+4. Update README and DEVELOPMENT with the production/debug boundary, digest
+   update responsibility, and Distroless debugging tradeoff.
+5. Build the complete `linux/amd64` runtime image, verify its configured user,
+   start it with the in-memory local profile, and exercise `/health`.
+6. Run the same Trivy vulnerability scope against the complete local image and
+   require zero CRITICAL findings.
+7. Run focused repository tests, `npm run check`, and `git diff --check`.
+
+Rollback is a reviewed revert to the prior Node slim runtime. Such a rollback
+will make the security gate red again and therefore also requires temporarily
+withholding or removing the required-check ruleset entry; it does not justify
+silently weakening evaluator policy.
+
+## 20. Local Gate Reproduction Addendum (2026-08-17)
+
+### Goal and approved scope
+
+Engineers must be able to reproduce the pull-request container vulnerability
+gate locally instead of repeatedly waiting for hosted CI while diagnosing an
+image finding. Add one documented npm command that builds the production
+`linux/amd64` image, runs the same Trivy vulnerability scope, retains the full
+JSON report, and invokes the same CRITICAL-only evaluator used by CI.
+
+The command is a developer convenience and does not replace the required hosted
+check. It does not publish an image, contact GHCR, generate release evidence,
+or introduce a local exception mechanism.
+
+### Design
+
+- Expose `npm run container:security-check` as the only user-facing command.
+- Always call the existing production `docker:build` command before scanning so
+  a stale local tag cannot produce false confidence. Docker layer caching keeps
+  repeated troubleshooting runs incremental.
+- Run Trivy 0.70.0 from a multi-architecture image pinned by manifest digest;
+  the host does not need a separately installed Trivy binary.
+- Reuse a named Docker volume for Trivy's vulnerability database cache while
+  retaining normal update checks.
+- Resolve the active Docker context's Unix socket and mount it into the pinned
+  scanner container. This supports standard and rootless Unix-socket contexts,
+  but not remote TCP/SSH contexts. Docker-socket access is a privileged trust
+  boundary even when mounted read-only, so the documentation must not describe
+  this as a strong security sandbox.
+- Write the same complete JSON report path as CI and keep scanner `exit-code`
+  zero so evidence generation remains separate from admission policy.
+- Invoke the existing evaluator with local GitHub-compatible output and summary
+  files, print its human-readable summary, and return its exit status. Scanner,
+  malformed-report, subject, and CRITICAL-policy failures remain fail-closed.
+- Ignore the generated `security-evidence/` directory to prevent accidental
+  report commits.
+- Make the hosted workflow's Trivy 0.70.0 version explicit, then protect the
+  important local/hosted parity points with repository contract tests. Do not
+  execute or retest Trivy from Vitest.
+
+### Alternatives
+
+- Document raw commands only: rejected because copied commands drift and place
+  too much setup burden on engineers.
+- Require a host Trivy installation: rejected because installation/version
+  differences make local reproduction less reliable.
+- Scan an exported image archive without Docker-socket access: safer isolation,
+  but Trivy reports the archive path rather than the source tag, which breaks
+  the evaluator's exact subject binding. Avoid changing or normalizing security
+  evidence solely for this local convenience.
+- Let Trivy fail directly on CRITICAL findings: rejected because it would bypass
+  the repository-owned policy and summary path that the local command is meant
+  to reproduce.
+
+### Implementation and verification
+
+1. Add `scripts/container-security-check.sh` and expose it through `package.json`.
+2. Document prerequisites, command behavior, report location, cache behavior,
+   trust boundary, and troubleshooting loop in `DEVELOPMENT.md`; add a concise
+   README pointer.
+3. Add `security-evidence/` to `.gitignore`.
+4. Declare `version: v0.70.0` in the hosted Trivy step and extend repository
+   contract coverage for the pinned local scanner, scan settings, evaluator,
+   and hosted/local version parity.
+5. Run focused repository tests, formatting/lint/type checks, and the complete
+   local command against the production Distroless image. Confirm it produces a
+   subject-bound JSON report, prints the evaluator summary, and passes with zero
+   CRITICAL findings.
+
+Rollback removes the npm command, wrapper, documentation, ignore entry, and
+contract assertions. The hosted scanner and policy remain operational because
+the local wrapper is not on the CI execution path.

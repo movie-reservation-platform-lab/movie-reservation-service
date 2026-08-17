@@ -495,8 +495,9 @@ GitHub Actions keeps each validation concern visible:
 - `service-unit-tests`: `test:unit` after quality passes;
 - `service-integration-tests`: `test:integration` after quality passes;
 - `service-build`: `build` after quality passes;
-- `container-image-check`: a read-only `docker:build` for `linux/amd64` after
-  all four service jobs pass on pull requests, manual runs, and forks;
+- `container-security-check`: a read-only local `linux/amd64` image build and
+  vulnerability scan after quality passes on pull requests, manual runs, and
+  forks; it runs in parallel with the remaining service jobs;
 - `publish-candidate`: a `linux/amd64` GHCR build and provenance attestation
   after the same four jobs pass on a canonical-repository push to `main`.
 
@@ -504,18 +505,23 @@ Each service job installs from `package-lock.json` independently with `npm ci`.
 Those jobs may update GitHub's npm download cache, but they have no repository,
 package, or deployment write authority.
 The read-only image job receives only `contents: read`; it does not log in to a
-registry or publish an image. Draft and ready pull requests, manual workflow
-dispatches, and forks always use this path. Only `publish-candidate` receives
-`packages: write`, `id-token: write`, and `attestations: write`, and it uses the
-ephemeral `GITHUB_TOKEN` rather than a PAT or separately managed signing key.
+registry or publish an image. It scans the locally tagged image and retains the
+complete Trivy JSON report as a 14-day workflow artifact. Draft and ready pull
+requests, manual workflow dispatches, and forks always use this path. Only
+`publish-candidate` receives `packages: write`, `id-token: write`, and
+`attestations: write`, and it uses the ephemeral `GITHUB_TOKEN` rather than a
+PAT or separately managed signing key.
 
-The publisher keeps imperative policy out of the workflow YAML. The repo-local
-`prepare-container-candidate` composite action validates the canonical event,
-constructs attempt-unique metadata, and rejects a stale `main` revision before
-registry login. The `record-container-candidate` action validates that the
-digest and tag match the source/run identity before writing the immutable
-handoff summary. Their Bash implementations are dependency-free and covered by
-unit tests with temporary GitHub output files and a fake remote `git` command.
+Repo-local composite actions keep policy and validation out of the workflow
+YAML. `evaluate-container-vulnerabilities` validates that Trivy JSON belongs to
+the expected local tag or immutable digest, writes the security summary, and
+applies the provisional CRITICAL-only policy. The publisher's
+`prepare-container-candidate` action validates the canonical event, constructs
+attempt-unique metadata, and rejects a stale `main` revision before registry
+login. `record-container-candidate` validates that the digest and tag match the
+source/run identity before writing the immutable handoff summary. Their
+dependency-free implementations are covered by focused subprocess and workflow
+contract tests.
 
 These actions are an intentional local migration seam, not the final
 organization API. [The shared CI building-block issue](https://github.com/movie-reservation-platform-lab/.github/issues/5)
@@ -526,11 +532,79 @@ Keep Testcontainers/Postgres e2e separate when it is added later so its Docker
 dependency, runtime, and failures remain independently visible. Do not hide it
 inside `service-quality`, `npm run check`, or another hosted wrapper.
 
-The pull-request workflow replaces the former `check` status with five stable
-check names. Before merging the publication change, configure the `main`
-ruleset to require a pull request and all five names. If a repository still
-requires the legacy `check`, replace it during that update and keep pull-request
-enforcement enabled throughout the transition.
+The pull-request workflow exposes five stable check names. Workflow YAML alone
+does not block a merge: after a pull request first produces a successful
+`container-security-check`, update the `main` ruleset to require that exact
+name. If `container-image-check` is currently required, replace it with the new
+name before merging this change while keeping pull-request enforcement enabled.
+During a prolonged scanner integration outage, a controlled maintainer may
+temporarily remove the required-check entry; the evaluator deliberately has no
+fail-open switch.
+
+### Pull-request container security evidence
+
+The PR job builds `movie-reservation-service:local` once and asks Trivy to scan
+OS and application/library vulnerabilities. Fixed and unfixed findings are
+included, and every severity remains in the JSON report. Trivy produces
+evidence without making the final admission decision; the repo-local evaluator
+fails the job when one or more CRITICAL findings exist. HIGH findings are
+reported but do not block this provisional gate.
+
+When CRITICAL findings exist, the job summary lists each vulnerability ID,
+package, installed version, and fixed version, or states that no fix was
+reported. The complete JSON report is uploaded with an attempt-unique name and
+retained for 14 days, including after a policy failure. Scanner, database,
+missing-report, malformed-report, and report-subject failures fail closed.
+
+This PR path intentionally does not publish an image, use registry credentials,
+or generate CycloneDX release evidence. Secret, configuration/IaC, license, and
+source scanning are also outside this provisional control. The job becomes a
+merge gate only when its exact check name is required by the repository
+ruleset.
+
+### Reproduce the container security gate locally
+
+Run the complete pull-request container check before pushing:
+
+```bash
+npm run container:security-check
+```
+
+The command requires Node/npm and a running Docker daemon with a local Unix
+socket. It supports standard Docker Desktop, Linux, and rootless Unix-socket
+contexts; remote TCP, SSH, and Windows named-pipe contexts are not supported.
+A host Trivy installation is not required.
+
+Each run performs the following fail-closed sequence:
+
+1. Builds the production `runtime` target as
+   `movie-reservation-service:local` for `linux/amd64`. Repeated builds reuse
+   Docker layers, so changing an application dependency or base image normally
+   rebuilds only the affected layers.
+2. Runs Trivy 0.70.0 from a multi-architecture image pinned by manifest digest.
+   The scanner uses the same OS/library scope, severities, unfixed-finding
+   behavior, and five-minute timeout as hosted CI.
+3. Writes the complete report to
+   `security-evidence/reservation-service-vulnerabilities.json`. The generated
+   directory is gitignored but remains available for detailed diagnosis.
+4. Runs the repository's `evaluate-container-vulnerabilities` implementation,
+   prints the same human-readable summary, and exits unsuccessfully when any
+   CRITICAL finding exists. HIGH findings remain visible and non-blocking under
+   the provisional policy.
+
+The first run may take longer while Docker downloads the pinned scanner and
+Trivy downloads its vulnerability database. Later runs reuse the
+`movie-reservation-service-trivy-cache` Docker volume while retaining Trivy's
+normal database-update behavior. This gives an engineer a short local
+build-scan-fix loop without waiting for every hosted CI job.
+
+The scanner container receives the active Docker Unix socket. A read-only
+socket mount still grants privileged Docker API access; containerization here
+isolates the Trivy installation, not the scanner from the host. The pinned
+scanner digest makes that trust decision explicit and reviewable. The local
+result is diagnostic evidence only: the required hosted check remains the
+merge authority because its clean runner and current database are independently
+controlled.
 
 ### Candidate publication and first-release checks
 
@@ -600,29 +674,51 @@ Build the baseline-compatible local image:
 npm run docker:build
 ```
 
+Build the local-only debuggable runtime image:
+
+```bash
+npm run docker:build:debug
+```
+
 `Dockerfile.dockerignore` uses an allowlist, so the build context contains only
 the Docker files, package manifests, `tsconfig.json`, and `src/`. The build
 stage uses the root lockfile and the existing `tsconfig.json`; a separate stage
-installs production dependencies. The runtime image receives only
-`package.json`, `dist/`, and production `node_modules`.
+installs production dependencies. Both use the same digest-pinned Node 24
+Debian 13 slim base so compiled dependencies retain a consistent glibc/Debian
+ABI. A runtime-layout stage collects only `package.json`, `dist/`, and
+production `node_modules`.
+
+The default `runtime` target copies that layout into a digest-pinned Distroless
+Node 24 Debian 13 `nonroot` image and invokes Node directly. It contains no
+shell, package manager, or npm CLI. The workspace is owned by the non-root user
+because the current GraphQL configuration writes `schema.gql` beside
+`package.json` at startup. Hosted PR scanning and canonical publication build
+this target.
+
+The `runtime-debug` target copies the same application layout into the pinned
+normal Node/Debian base, runs as its unprivileged `node` user, and retains shell
+and npm tooling. Docker Compose explicitly selects this target for local
+troubleshooting. It is local-only: do not publish, deploy, or treat its
+vulnerability result as candidate evidence. Use the production Distroless
+target for production-like demonstrations; switch to the debug target only
+when interactive diagnosis is needed.
+
+Base digests are intentionally reviewable inputs. Update their readable tags
+and digests together through a reviewed dependency PR; the longer-term update
+process remains tracked in repository issue #10.
 
 The host build also compiles `scripts/` and `test/` through the shared
 `tsconfig.json`. Those paths are intentionally absent from the production image
 context; any future non-`src/` input required to compile the service must update
 the allowlist in the same change.
 
-This extraction intentionally preserves the original image behavior:
-
-- the runtime uses the base image's default user;
-- generated GraphQL schema output remains `schema.gql` under the service root;
-- `db:migrate` and `db:migrate:status` remain source-mode commands and cannot
-  run inside the runtime image, which omits `src/` and the development-only
-  `tsx` runner.
-
-Non-root execution, runtime image smoke checks, schema-output hardening, and
-immutable-image migrations belong to dedicated follow-ups. The migration
-limitation must be resolved before using this image with a PostgreSQL/RDS-backed
-environment; it does not block the current in-memory smoke path.
+Generated GraphQL schema output remains `schema.gql` under the service root.
+`db:migrate` and `db:migrate:status` remain source-mode commands and cannot run
+inside the runtime image, which omits `src/` and the development-only `tsx`
+runner. Runtime smoke automation, schema-output hardening, and immutable-image
+migrations remain dedicated follow-ups. The migration limitation must be
+resolved before using this image with a PostgreSQL/RDS-backed environment; it
+does not block the current in-memory smoke path.
 
 ## Formatting And Linting
 
