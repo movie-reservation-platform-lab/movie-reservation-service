@@ -111,6 +111,7 @@ describe('standalone repository extraction contract', () => {
     const allowedLocalActionReferences = [
       './.github/actions/evaluate-container-vulnerabilities',
       './.github/actions/prepare-container-candidate',
+      './.github/actions/evaluate-container-vulnerabilities',
       './.github/actions/record-container-candidate',
     ] as const;
     const localActionReferences = actionReferences.filter((reference) => reference.startsWith('./'));
@@ -232,7 +233,10 @@ describe('standalone repository extraction contract', () => {
     expect(publisher).toContain('uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9');
     expect(publisher).toContain('uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8');
     expect(publisher).toContain('uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a');
+    expect(publisher).toContain('uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25');
+    expect(publisher).toContain('uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a');
     expect(publisher).toContain('uses: ./.github/actions/prepare-container-candidate');
+    expect(publisher).toContain('uses: ./.github/actions/evaluate-container-vulnerabilities');
     expect(publisher).toContain('uses: ./.github/actions/record-container-candidate');
     expect(publisher).toContain('expected-repository: movie-reservation-platform-lab/movie-reservation-service');
     expect(publisher).toContain('expected-ref: refs/heads/main');
@@ -247,6 +251,55 @@ describe('standalone repository extraction contract', () => {
     expect(publisher).toContain('candidate-digest: ${{ steps.publish.outputs.digest }}');
     expect(publisher).toContain('source-revision: ${{ github.sha }}');
     expect(publisher).not.toMatch(/^\s+run:\s+\|/m);
+  });
+
+  it('records exact-digest security evidence before making the candidate eligible', () => {
+    const workflow = readTextFile('.github/workflows/ci.yml');
+    const publisher = readWorkflowJob(workflow, 'publish-candidate');
+    const immutableCandidate = '${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}';
+    const trivyAction = 'uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25';
+    const uploadAction = 'uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
+    const evaluatorAction = 'uses: ./.github/actions/evaluate-container-vulnerabilities';
+    const handoffAction = 'uses: ./.github/actions/record-container-candidate';
+
+    expect(publisher.match(new RegExp(escapeRegExp(trivyAction), 'g'))).toHaveLength(2);
+    expect(publisher.match(new RegExp(escapeRegExp(`image-ref: ${immutableCandidate}`), 'g'))).toHaveLength(2);
+    expect(publisher.match(/scanners: vuln/g)).toHaveLength(2);
+    expect(publisher.match(/vuln-type: os,library/g)).toHaveLength(2);
+    expect(publisher.match(/ignore-unfixed: false/g)).toHaveLength(2);
+    expect(publisher.match(/exit-code: '0'/g)).toHaveLength(2);
+    expect(publisher.match(/timeout: 5m/g)).toHaveLength(2);
+    expect(publisher).toContain('format: cyclonedx');
+    expect(publisher).toContain('list-all-pkgs: true');
+    expect(publisher).toContain('output: security-evidence/reservation-service.cdx.json');
+    expect(publisher).toContain('format: json');
+    expect(publisher).toContain('severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL');
+    expect(publisher).toContain('output: security-evidence/reservation-service-vulnerabilities.json');
+    expect(publisher).toContain('version: v0.70.0');
+    expect(publisher).toContain('skip-setup-trivy: true');
+    expect(publisher).toContain('cache: false');
+    expect(publisher).toContain(`expected-image: ${immutableCandidate}`);
+    expect(publisher).toContain('subject-kind: immutable-ghcr');
+    expect(publisher).toContain(
+      'reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+    );
+    expect(publisher).toContain('if: ${{ !cancelled() }}');
+    expect(publisher).toContain('if-no-files-found: error');
+    expect(publisher).toContain('retention-days: 14');
+
+    const publishPosition = publisher.indexOf('uses: docker/build-push-action@');
+    const attestationPosition = publisher.indexOf('uses: actions/attest-build-provenance@');
+    const firstScanPosition = publisher.indexOf(trivyAction);
+    const evaluationPosition = publisher.indexOf(evaluatorAction);
+    const uploadPosition = publisher.indexOf(uploadAction);
+    const handoffPosition = publisher.indexOf(handoffAction);
+
+    expect(publishPosition).toBeGreaterThanOrEqual(0);
+    expect(attestationPosition).toBeGreaterThan(publishPosition);
+    expect(firstScanPosition).toBeGreaterThan(attestationPosition);
+    expect(evaluationPosition).toBeGreaterThan(firstScanPosition);
+    expect(uploadPosition).toBeGreaterThan(evaluationPosition);
+    expect(handoffPosition).toBeGreaterThan(uploadPosition);
   });
 
   it('exposes script-backed local actions through explicit workflow contracts', () => {
@@ -308,4 +361,8 @@ function readWorkflowJob(workflow: string, job: string): string {
   const nextJob = jobAndRemainder.search(/^ {2}[a-z][a-z0-9-]*:\s*$/m);
 
   return nextJob === -1 ? jobAndRemainder : jobAndRemainder.slice(0, nextJob);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

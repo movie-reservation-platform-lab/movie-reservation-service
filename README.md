@@ -90,8 +90,12 @@ Hosted jobs call the focused npm scripts directly. `npm run check` and
 `npm run ci` remain local convenience wrappers. A push to `main` in this
 canonical repository runs the same four service gates, then replaces the local
 image check with `publish-candidate`. That job alone can publish and attest a
-`linux/amd64` image in GHCR. The Docker-dependent Postgres e2e suite is not yet
-hosted; it will be added later as its own visible job.
+`linux/amd64` image in GHCR. It scans the exact published digest, retains a
+CycloneDX SBOM and complete vulnerability JSON for 14 days, and rejects every
+CRITICAL finding before recording the candidate handoff. HIGH findings remain
+visible and non-blocking under the provisional policy. The Docker-dependent
+Postgres e2e suite is not yet hosted; it will be added later as its own visible
+job.
 
 Container vulnerability evaluation, candidate preparation, and handoff
 recording use tested repo-local composite actions, leaving the workflow focused
@@ -103,8 +107,8 @@ migration seam for the planned
 
 Application CI publishes one attempt-unique discovery tag for each successful,
 current `main` run and records the immutable GHCR digest plus GitHub-hosted build
-provenance. Retries use a new tag and never move an earlier tag. The digest, not
-the tag, is the candidate identity.
+provenance and provisional security evidence. Retries use a new tag and never
+move an earlier tag. The digest, not the tag, is the candidate identity.
 
 `movie-platform-environments` validates and selects candidate digests for
 promotion. This service does not know the final destination and does not deploy

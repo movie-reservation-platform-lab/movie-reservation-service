@@ -248,6 +248,63 @@ jobs:
           # installable container images even though they are not runnable.
           push-to-registry: false
 
+      - name: Prepare container security evidence
+        run: mkdir -p security-evidence
+
+      - name: Generate candidate CycloneDX SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}
+          scanners: vuln
+          vuln-type: os,library
+          format: cyclonedx
+          output: security-evidence/reservation-service.cdx.json
+          list-all-pkgs: true
+          ignore-unfixed: false
+          hide-progress: true
+          exit-code: '0'
+          timeout: 5m
+          version: v0.70.0
+
+      - name: Generate candidate vulnerability report
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}
+          scanners: vuln
+          vuln-type: os,library
+          format: json
+          output: security-evidence/reservation-service-vulnerabilities.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          hide-progress: true
+          exit-code: '0'
+          timeout: 5m
+          skip-setup-trivy: true
+          cache: false
+
+      - name: Evaluate provisional candidate vulnerability policy
+        uses: ./.github/actions/evaluate-container-vulnerabilities
+        with:
+          report-path: security-evidence/reservation-service-vulnerabilities.json
+          expected-image: ${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}
+          subject-kind: immutable-ghcr
+          evidence-artifact-name: >-
+            reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+
+      - name: Upload container security evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: >-
+            reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: |
+            security-evidence/reservation-service.cdx.json
+            security-evidence/reservation-service-vulnerabilities.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Record candidate handoff
         uses: ./.github/actions/record-container-candidate
         with:
