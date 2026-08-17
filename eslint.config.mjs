@@ -14,7 +14,13 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['*.config.ts', '*.config.mjs', 'eslint.config.mjs', 'vitest.config.ts'],
+          allowDefaultProject: [
+            '*.config.ts',
+            '*.config.mjs',
+            '.github/actions/evaluate-container-vulnerabilities/evaluate.mjs',
+            'eslint.config.mjs',
+            'vitest.config.ts',
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },
