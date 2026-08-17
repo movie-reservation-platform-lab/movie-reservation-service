@@ -902,3 +902,67 @@ or introduce a local exception mechanism.
 Rollback removes the npm command, wrapper, documentation, ignore entry, and
 contract assertions. The hosted scanner and policy remain operational because
 the local wrapper is not on the CI execution path.
+
+## 21. PR 4 Current-Main Implementation Checkpoint (2026-08-17)
+
+### Baseline and confirmed scope
+
+PR 4 starts from merged canonical `main` at `3111fe3` in the isolated
+`issue-19-main-security-evidence` worktree. PRs 1–3 already provide the reviewed
+plan, evaluator, blocking PR scan, Distroless runtime remediation, locally
+reproducible scan, and stable required check. This final PR adds only the
+canonical `main` release-evidence path:
+
+- scan the exact digest returned by the successful GHCR publication, never its
+  mutable discovery tag;
+- generate CycloneDX JSON and complete vulnerability JSON with stable file
+  names;
+- apply the existing CRITICAL-only evaluator in `immutable-ghcr` mode;
+- upload both files as a run-attempt-specific artifact retained for 14 days,
+  including after a CRITICAL policy failure;
+- keep candidate handoff strictly after evidence generation, evaluation, and
+  upload so a rejected or incomplete candidate is never recorded as eligible;
+- document the release evidence, rejection behavior, and first-run checks.
+
+There are no new GraphQL, service runtime, Dockerfile, local PR gate, evaluator,
+ruleset, deployment, long-term storage, or exception-process changes in this
+PR.
+
+### Implementation-reality reconciliation
+
+The preserved raw prototype predates the merged evaluator contract and passes
+an obsolete `immutable-image` input. PR 4 must instead pass the exact published
+reference through `expected-image` with `subject-kind: immutable-ghcr`. No
+compatibility input or evaluator refactor is required.
+
+Use the already approved, SHA-pinned Trivy action twice within the publisher:
+the first invocation generates the all-package CycloneDX document and installs
+Trivy 0.70.0; the second reuses that binary and cache to generate the complete
+severity JSON report. Both invocations target
+`${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}` and
+leave policy enforcement to the repository evaluator.
+
+The upload step uses `if: ${{ !cancelled() }}` so generated evidence survives a
+policy failure. The existing handoff step keeps its default success condition
+and remains last; therefore scanner, registry, database, report-validation,
+policy, or upload failure prevents handoff without deleting the published but
+ineligible GHCR image.
+
+### Verification and rollout
+
+1. Extend the publisher workflow and assert exact-digest identity, scan scope,
+   two output formats, current evaluator inputs, retention, and ordering in the
+   repository workflow contract tests. Do not run live Trivy from Vitest.
+2. Update README with the concise release contract and DEVELOPMENT with
+   artifact inspection, HIGH/CRITICAL behavior, failure semantics, and the
+   first canonical-run checklist.
+3. Run focused workflow/evaluator tests, formatting, lint, typecheck, unit and
+   integration tests, then `git diff --check`.
+4. After merge, observe the canonical `main` run: confirm both files belong to
+   the exact published digest and that candidate handoff occurs only after a
+   passing evaluation and successful artifact upload.
+
+Rollback is a reviewed revert of the PR 4 workflow/tests/docs only. It removes
+release evidence and restores the previous publish-then-handoff path without
+weakening the already required PR security check. Historical images and
+workflow artifacts are not deleted.

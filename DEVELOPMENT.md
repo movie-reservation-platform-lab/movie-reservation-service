@@ -498,8 +498,9 @@ GitHub Actions keeps each validation concern visible:
 - `container-security-check`: a read-only local `linux/amd64` image build and
   vulnerability scan after quality passes on pull requests, manual runs, and
   forks; it runs in parallel with the remaining service jobs;
-- `publish-candidate`: a `linux/amd64` GHCR build and provenance attestation
-  after the same four jobs pass on a canonical-repository push to `main`.
+- `publish-candidate`: a `linux/amd64` GHCR build, provenance attestation, and
+  exact-digest security evidence gate after the same four jobs pass on a
+  canonical-repository push to `main`.
 
 Each service job installs from `package-lock.json` independently with `npm ci`.
 Those jobs may update GitHub's npm download cache, but they have no repository,
@@ -615,13 +616,23 @@ ghcr.io/movie-reservation-platform-lab/movie-reservation-service:sha-<full-sha>-
 ```
 
 It also adds OCI source, revision, and version labels; records a GitHub-hosted
-build-provenance attestation for the exact digest; and records the registry,
-repository, full source SHA, digest-pinned image, Actions run URL, and
-verification command in the workflow summary. The attestation is deliberately
-not pushed into GHCR because its `sha256-*` OCI fallback tag is presented by the
-package UI as an installable image even though it is not runnable. Downstream
-automation must use `ghcr.io/...@sha256:...`, never the discovery tag, as the
-candidate identity.
+build-provenance attestation for the exact digest; scans that digest's OS and
+application/library packages with Trivy; and records the registry, repository,
+full source SHA, digest-pinned image, Actions run URL, and verification command
+in the workflow summary. The scan produces a CycloneDX JSON SBOM and complete
+vulnerability JSON in a run-attempt-specific artifact retained for 14 days.
+The attestation is deliberately not pushed into GHCR because its `sha256-*` OCI
+fallback tag is presented by the package UI as an installable image even though
+it is not runnable. Downstream automation must use
+`ghcr.io/...@sha256:...`, never the discovery tag, as the candidate identity.
+
+The release gate fails on every CRITICAL finding, including findings without a
+fix. HIGH findings are reported but remain non-blocking under this provisional
+repository policy; a future environment-admission process may consume the
+report for its separately governed approval record. Registry, scanner,
+vulnerability-database, missing-report, malformed-report, subject-mismatch, and
+evidence-upload failures also make the workflow red. The evaluator has no
+waiver or fail-open input.
 
 A rerun checks that its source SHA still equals the canonical repository's
 current `main` SHA before logging in or pushing. If `main` has already advanced,
@@ -641,12 +652,17 @@ After the first successful `main` publication:
 
 1. Inspect the `publish-candidate` summary and retain its digest and Actions run
    URL together.
-2. In the GitHub package settings, verify the package is linked to this source
+2. Download the
+   `reservation-service-security-evidence-<run-id>-attempt-<attempt>` artifact.
+   Confirm that `reservation-service.cdx.json` and
+   `reservation-service-vulnerabilities.json` exist and that the vulnerability
+   report's `ArtifactName` equals the digest-pinned candidate in the summary.
+3. In the GitHub package settings, verify the package is linked to this source
    repository and change its visibility to public. The workflow deliberately
    does not receive broader credentials to automate that one-time setting.
-3. From an unauthenticated environment, pull the exact digest to verify public
+4. From an unauthenticated environment, pull the exact digest to verify public
    access.
-4. Authenticate to GHCR, then run the summary's verification command:
+5. Authenticate to GHCR, then run the summary's verification command:
 
    ```bash
    gh attestation verify oci://ghcr.io/...@sha256:... \
@@ -657,14 +673,17 @@ After the first successful `main` publication:
    attestation bundles, and admission tooling that requires them, remain a
    `movie-platform-environments` concern.
 
-5. Hand the digest and provenance evidence to `movie-platform-environments` for
-   its separate admission and promotion process.
+6. Hand the digest, provenance, and security evidence to
+   `movie-platform-environments` for its separate admission and promotion
+   process.
 
-If the image push succeeds but attestation or summary generation fails, GHCR
-may contain the tagged image while the workflow is red. Treat that digest as
-ineligible: do not delete it, promote it, or infer success from its presence.
-Retry the same run only if its SHA is still current `main`; otherwise merge a
-fix or revert so the cumulative current state creates the next candidate.
+If the image push succeeds but attestation, scanning, evaluation, evidence
+upload, or summary generation fails, GHCR may contain the tagged image while
+the workflow is red. A CRITICAL policy failure still uploads the generated
+reports before the job finishes. Treat every red digest as ineligible: do not
+delete it, promote it, or infer success from its presence. Retry the same run
+only if its SHA is still current `main`; otherwise merge a fix or revert so the
+cumulative current state creates the next candidate.
 
 ## Container Image
 
