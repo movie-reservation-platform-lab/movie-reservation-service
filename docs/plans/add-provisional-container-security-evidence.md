@@ -829,3 +829,76 @@ Rollback is a reviewed revert to the prior Node slim runtime. Such a rollback
 will make the security gate red again and therefore also requires temporarily
 withholding or removing the required-check ruleset entry; it does not justify
 silently weakening evaluator policy.
+
+## 20. Local Gate Reproduction Addendum (2026-08-17)
+
+### Goal and approved scope
+
+Engineers must be able to reproduce the pull-request container vulnerability
+gate locally instead of repeatedly waiting for hosted CI while diagnosing an
+image finding. Add one documented npm command that builds the production
+`linux/amd64` image, runs the same Trivy vulnerability scope, retains the full
+JSON report, and invokes the same CRITICAL-only evaluator used by CI.
+
+The command is a developer convenience and does not replace the required hosted
+check. It does not publish an image, contact GHCR, generate release evidence,
+or introduce a local exception mechanism.
+
+### Design
+
+- Expose `npm run container:security-check` as the only user-facing command.
+- Always call the existing production `docker:build` command before scanning so
+  a stale local tag cannot produce false confidence. Docker layer caching keeps
+  repeated troubleshooting runs incremental.
+- Run Trivy 0.70.0 from a multi-architecture image pinned by manifest digest;
+  the host does not need a separately installed Trivy binary.
+- Reuse a named Docker volume for Trivy's vulnerability database cache while
+  retaining normal update checks.
+- Resolve the active Docker context's Unix socket and mount it into the pinned
+  scanner container. This supports standard and rootless Unix-socket contexts,
+  but not remote TCP/SSH contexts. Docker-socket access is a privileged trust
+  boundary even when mounted read-only, so the documentation must not describe
+  this as a strong security sandbox.
+- Write the same complete JSON report path as CI and keep scanner `exit-code`
+  zero so evidence generation remains separate from admission policy.
+- Invoke the existing evaluator with local GitHub-compatible output and summary
+  files, print its human-readable summary, and return its exit status. Scanner,
+  malformed-report, subject, and CRITICAL-policy failures remain fail-closed.
+- Ignore the generated `security-evidence/` directory to prevent accidental
+  report commits.
+- Make the hosted workflow's Trivy 0.70.0 version explicit, then protect the
+  important local/hosted parity points with repository contract tests. Do not
+  execute or retest Trivy from Vitest.
+
+### Alternatives
+
+- Document raw commands only: rejected because copied commands drift and place
+  too much setup burden on engineers.
+- Require a host Trivy installation: rejected because installation/version
+  differences make local reproduction less reliable.
+- Scan an exported image archive without Docker-socket access: safer isolation,
+  but Trivy reports the archive path rather than the source tag, which breaks
+  the evaluator's exact subject binding. Avoid changing or normalizing security
+  evidence solely for this local convenience.
+- Let Trivy fail directly on CRITICAL findings: rejected because it would bypass
+  the repository-owned policy and summary path that the local command is meant
+  to reproduce.
+
+### Implementation and verification
+
+1. Add `scripts/container-security-check.sh` and expose it through `package.json`.
+2. Document prerequisites, command behavior, report location, cache behavior,
+   trust boundary, and troubleshooting loop in `DEVELOPMENT.md`; add a concise
+   README pointer.
+3. Add `security-evidence/` to `.gitignore`.
+4. Declare `version: v0.70.0` in the hosted Trivy step and extend repository
+   contract coverage for the pinned local scanner, scan settings, evaluator,
+   and hosted/local version parity.
+5. Run focused repository tests, formatting/lint/type checks, and the complete
+   local command against the production Distroless image. Confirm it produces a
+   subject-bound JSON report, prints the evaluator summary, and passes with zero
+   CRITICAL findings.
+
+Rollback removes the npm command, wrapper, documentation, ignore entry, and
+contract assertions. The hosted scanner and policy remain operational because
+the local wrapper is not on the CI execution path.

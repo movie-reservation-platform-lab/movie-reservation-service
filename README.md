@@ -79,6 +79,13 @@ authority:
   packages with Trivy. CRITICAL findings fail the job; HIGH findings remain
   visible and non-blocking. The complete JSON report is retained for 14 days.
 
+Reproduce that container gate locally before opening or updating a pull request
+with `npm run container:security-check`. It builds the production image, runs a
+digest-pinned Dockerized Trivy scanner, writes the complete JSON report, and
+applies the same CRITICAL-only evaluator. See
+[DEVELOPMENT.md](DEVELOPMENT.md#reproduce-the-container-security-gate-locally)
+for prerequisites, caching, outputs, and the Docker-socket trust boundary.
+
 Hosted jobs call the focused npm scripts directly. `npm run check` and
 `npm run ci` remain local convenience wrappers. A push to `main` in this
 canonical repository runs the same four service gates, then replaces the local

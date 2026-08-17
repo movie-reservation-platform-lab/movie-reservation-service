@@ -562,6 +562,50 @@ source scanning are also outside this provisional control. The job becomes a
 merge gate only when its exact check name is required by the repository
 ruleset.
 
+### Reproduce the container security gate locally
+
+Run the complete pull-request container check before pushing:
+
+```bash
+npm run container:security-check
+```
+
+The command requires Node/npm and a running Docker daemon with a local Unix
+socket. It supports standard Docker Desktop, Linux, and rootless Unix-socket
+contexts; remote TCP, SSH, and Windows named-pipe contexts are not supported.
+A host Trivy installation is not required.
+
+Each run performs the following fail-closed sequence:
+
+1. Builds the production `runtime` target as
+   `movie-reservation-service:local` for `linux/amd64`. Repeated builds reuse
+   Docker layers, so changing an application dependency or base image normally
+   rebuilds only the affected layers.
+2. Runs Trivy 0.70.0 from a multi-architecture image pinned by manifest digest.
+   The scanner uses the same OS/library scope, severities, unfixed-finding
+   behavior, and five-minute timeout as hosted CI.
+3. Writes the complete report to
+   `security-evidence/reservation-service-vulnerabilities.json`. The generated
+   directory is gitignored but remains available for detailed diagnosis.
+4. Runs the repository's `evaluate-container-vulnerabilities` implementation,
+   prints the same human-readable summary, and exits unsuccessfully when any
+   CRITICAL finding exists. HIGH findings remain visible and non-blocking under
+   the provisional policy.
+
+The first run may take longer while Docker downloads the pinned scanner and
+Trivy downloads its vulnerability database. Later runs reuse the
+`movie-reservation-service-trivy-cache` Docker volume while retaining Trivy's
+normal database-update behavior. This gives an engineer a short local
+build-scan-fix loop without waiting for every hosted CI job.
+
+The scanner container receives the active Docker Unix socket. A read-only
+socket mount still grants privileged Docker API access; containerization here
+isolates the Trivy installation, not the scanner from the host. The pinned
+scanner digest makes that trust decision explicit and reviewable. The local
+result is diagnostic evidence only: the required hosted check remains the
+merge authority because its clean runner and current database are independently
+controlled.
+
 ### Candidate publication and first-release checks
 
 The publisher creates this attempt-unique discovery tag:

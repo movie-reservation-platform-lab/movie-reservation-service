@@ -161,6 +161,7 @@ jobs:
           hide-progress: true
           exit-code: '0'
           timeout: 5m
+          version: v0.70.0
 
       - name: Evaluate provisional vulnerability policy
         uses: ./.github/actions/evaluate-container-vulnerabilities
