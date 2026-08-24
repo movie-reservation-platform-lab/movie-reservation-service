@@ -13,6 +13,9 @@ const imageDigest = `sha256:${'b'.repeat(64)}`;
 const sourceRepository = 'movie-reservation-platform-lab/movie-reservation-service';
 const runId = '123456789';
 const runAttempt = '2';
+const evidenceArtifactName = `reservation-service-security-evidence-${runId}-attempt-${runAttempt}`;
+const evidenceContractPath = 'security-evidence/component-candidate-evidence-v1alpha1.json';
+const evidenceAttestationUrl = `https://github.com/${sourceRepository}/attestations/246813579`;
 
 let temporaryDirectory = '';
 
@@ -99,6 +102,9 @@ describe('record-container-candidate', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(readKeyValueFile(githubOutput)).toEqual({
+      evidence_artifact_name: evidenceArtifactName,
+      evidence_attestation_url: evidenceAttestationUrl,
+      evidence_contract_path: evidenceContractPath,
       immutable_candidate: immutableCandidate,
     });
     expect(readFileSync(stepSummary, 'utf8')).toBe(
@@ -112,6 +118,9 @@ describe('record-container-candidate', () => {
         `- Source repository: \`${sourceRepository}\``,
         `- Source revision: \`${sourceRevision}\``,
         `- Build reference: https://github.com/${sourceRepository}/actions/runs/${runId}/attempts/${runAttempt}`,
+        `- Evidence artifact: \`${evidenceArtifactName}\``,
+        `- Evidence contract: \`${evidenceContractPath}\``,
+        `- Evidence package attestation: ${evidenceAttestationUrl}`,
         '',
         'After authenticating to GHCR, verify provenance with:',
         `\`gh attestation verify oci://${immutableCandidate} --repo ${sourceRepository}\``,
@@ -151,6 +160,42 @@ describe('record-container-candidate', () => {
     expect(readFileSync(githubOutput, 'utf8')).toBe('');
     expect(readFileSync(stepSummary, 'utf8')).toBe('');
   });
+
+  it.each([
+    [
+      'an artifact name for another attempt',
+      { EVIDENCE_ARTIFACT_NAME: `reservation-service-security-evidence-${runId}-attempt-99` },
+      'Evidence artifact name does not match the build attempt',
+    ],
+    [
+      'a non-canonical contract path',
+      { EVIDENCE_CONTRACT_PATH: 'other/component-candidate-evidence-v1alpha1.json' },
+      'Evidence contract path must be security-evidence/component-candidate-evidence-v1alpha1.json',
+    ],
+    [
+      'an attestation URL from another repository',
+      { EVIDENCE_ATTESTATION_URL: 'https://github.com/example/other/attestations/246813579' },
+      'Evidence attestation URL does not belong to the source repository',
+    ],
+    [
+      'an attestation URL without a numeric identity',
+      { EVIDENCE_ATTESTATION_URL: `https://github.com/${sourceRepository}/attestations/not-an-id` },
+      'Evidence attestation URL does not identify an attestation',
+    ],
+  ] as const)('rejects %s without recording a handoff', (_scenario, environmentOverride, expectedError) => {
+    const githubOutput = createEmptyFile('invalid-evidence-output');
+    const stepSummary = createEmptyFile('invalid-evidence-summary');
+
+    const result = runScript(recordScript, {
+      ...baseRecordEnvironment(githubOutput, stepSummary),
+      ...environmentOverride,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(expectedError);
+    expect(readFileSync(githubOutput, 'utf8')).toBe('');
+    expect(readFileSync(stepSummary, 'utf8')).toBe('');
+  });
 });
 
 function basePrepareEnvironment(githubOutput: string): NodeJS.ProcessEnv {
@@ -179,6 +224,9 @@ function baseRecordEnvironment(githubOutput: string, stepSummary: string): NodeJ
     CANDIDATE_REGISTRY: 'ghcr.io',
     CANDIDATE_REPOSITORY: sourceRepository,
     CANDIDATE_TAG: `sha-${sourceRevision}-run-${runId}-attempt-${runAttempt}`,
+    EVIDENCE_ARTIFACT_NAME: evidenceArtifactName,
+    EVIDENCE_ATTESTATION_URL: evidenceAttestationUrl,
+    EVIDENCE_CONTRACT_PATH: evidenceContractPath,
     GITHUB_OUTPUT: githubOutput,
     GITHUB_SERVER_URL: 'https://github.com',
     GITHUB_STEP_SUMMARY: stepSummary,

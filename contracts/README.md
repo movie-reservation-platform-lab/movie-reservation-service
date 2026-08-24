@@ -26,6 +26,13 @@ project dependency. Its subprocess tests parse successful output through this
 strict contract, so producer logic cannot diverge from the contract without
 failing the automation test lane.
 
+A successful canonical run attests and uploads the candidate document, retained
+provenance bundle, CycloneDX SBOM, and Trivy report under the exact run/attempt
+artifact name declared by the document. Failed runs do not upload that canonical
+handoff name. Available scan diagnostics may instead use a distinct
+`reservation-service-rejected-security-evidence-*` artifact name that is never
+eligible as candidate evidence.
+
 ## Semantic bindings
 
 JSON Schema enforces the document shape, constants, patterns, and closed object
@@ -49,6 +56,9 @@ admission decision.
 
 Paths are fixed contract values rather than producer input. This prevents path
 traversal and makes artifact layout changes explicit compatibility events.
+Consumers must materialize downloaded files beneath a package root using the
+declared `security-evidence/` paths before resolving and hashing them; an
+artifact downloader's extraction layout must not redefine contract paths.
 
 The committed fixture uses synthetic IDs, digests, counts, and timestamps. It
 documents the contract shape and does not identify a live image, run, or

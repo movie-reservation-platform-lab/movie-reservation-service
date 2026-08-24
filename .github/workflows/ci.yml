@@ -233,6 +233,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
@@ -325,20 +330,26 @@ jobs:
           evidence-artifact-name: >-
             reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
 
-      - name: Upload container security evidence
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Emit candidate evidence contract
+        env:
+          ATTESTATION_ID: ${{ steps.provenance.outputs.attestation-id }}
+          ATTESTATION_URL: ${{ steps.provenance.outputs.attestation-url }}
+          CANDIDATE_DIGEST: ${{ steps.publish.outputs.digest }}
+          CANDIDATE_REPOSITORY: ${{ steps.image.outputs.image_ref }}
+        run: node automation/candidate-evidence/src/emit.mjs
+
+      - name: Attest candidate evidence package
+        id: evidence-provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
-          name: >-
-            reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
-          path: |
+          subject-path: |
+            security-evidence/component-candidate-evidence-v1alpha1.json
             security-evidence/reservation-service-provenance.json
             security-evidence/reservation-service.cdx.json
             security-evidence/reservation-service-vulnerabilities.json
-          if-no-files-found: error
-          retention-days: 14
 
-      - name: Record candidate handoff
+      - name: Validate candidate handoff metadata
+        id: handoff
         uses: ./.github/actions/record-container-candidate
         with:
           artifact-name: reservation-service
@@ -350,3 +361,31 @@ jobs:
           source-repository: ${{ github.repository }}
           source-revision: ${{ github.sha }}
           build-ref: ${{ steps.image.outputs.build_ref }}
+          evidence-artifact-name: >-
+            reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          evidence-contract-path: security-evidence/component-candidate-evidence-v1alpha1.json
+          evidence-attestation-url: ${{ steps.evidence-provenance.outputs.attestation-url }}
+
+      - name: Upload candidate security evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.handoff.outputs.evidence_artifact_name }}
+          path: |
+            ${{ steps.handoff.outputs.evidence_contract_path }}
+            security-evidence/reservation-service-provenance.json
+            security-evidence/reservation-service.cdx.json
+            security-evidence/reservation-service-vulnerabilities.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload rejected candidate diagnostics
+        if: ${{ failure() && !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: >-
+            reservation-service-rejected-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: |
+            security-evidence/reservation-service.cdx.json
+            security-evidence/reservation-service-vulnerabilities.json
+          if-no-files-found: warn
+          retention-days: 14

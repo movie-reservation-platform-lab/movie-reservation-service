@@ -536,9 +536,12 @@ applies the provisional CRITICAL-only policy. The publisher's
 `prepare-container-candidate` action validates the canonical event, constructs
 attempt-unique metadata, and rejects a stale `main` revision before registry
 login. `record-container-candidate` validates that the digest and tag match the
-source/run identity before writing the immutable handoff summary. Their
-dependency-free implementations are covered by focused subprocess and workflow
-contract tests.
+source/run identity. Before canonical upload, it also checks that the evidence
+artifact name identifies that run attempt, the contract path is fixed, and the
+package-attestation URL belongs to the source repository and has a numeric
+identity. Its outputs and summary are job-local; only a successful workflow and
+its canonical artifact form the durable handoff. The dependency-free helpers
+are covered by focused subprocess and workflow contract tests.
 
 These actions are an intentional local migration seam, not the final
 organization API. [The shared CI building-block issue](https://github.com/movie-reservation-platform-lab/.github/issues/5)
@@ -632,23 +635,36 @@ ghcr.io/movie-reservation-platform-lab/movie-reservation-service:sha-<full-sha>-
 ```
 
 It also adds OCI source, revision, and version labels; records a GitHub-hosted
-build-provenance attestation for the exact digest; scans that digest's OS and
-application/library packages with Trivy; and records the registry, repository,
-full source SHA, digest-pinned image, Actions run URL, and verification command
-in the workflow summary. The scan produces a CycloneDX JSON SBOM and complete
-vulnerability JSON in a run-attempt-specific artifact retained for 14 days.
-The attestation is deliberately not pushed into GHCR because its `sha256-*` OCI
-fallback tag is presented by the package UI as an installable image even though
-it is not runnable. Downstream automation must use
+build-provenance attestation for the exact digest; retains and verifies that
+attestation's Sigstore bundle; and scans the digest's OS and
+application/library packages with Trivy. After the provisional gate passes, a
+dependency-free emitter creates the candidate-evidence contract and hashes the
+retained bundle, CycloneDX SBOM, and complete vulnerability report. The workflow
+attests those four files, validates their run-attempt handoff identities, and
+uploads them in one canonical artifact retained for 14 days.
+
+The workflow summary records the registry, repository, full source SHA,
+digest-pinned image, Actions run URL, evidence artifact and contract path,
+evidence-package attestation URL, and image-provenance verification command.
+The image attestation is deliberately not pushed into GHCR because its
+`sha256-*` OCI fallback tag is presented by the package UI as an installable
+image even though it is not runnable. Downstream automation must use
 `ghcr.io/...@sha256:...`, never the discovery tag, as the candidate identity.
 
 The release gate fails on every CRITICAL finding, including findings without a
 fix. HIGH findings are reported but remain non-blocking under this provisional
 repository policy; a future environment-admission process may consume the
-report for its separately governed approval record. Registry, scanner,
-vulnerability-database, missing-report, malformed-report, subject-mismatch, and
-evidence-upload failures also make the workflow red. The evaluator has no
+report for its separately governed approval record. Registry, provenance
+verification, scanner, vulnerability-database, missing-report, malformed-report,
+subject-mismatch, evidence-emission, package-attestation, handoff-validation,
+and evidence-upload failures also make the workflow red. The evaluator has no
 waiver or fail-open input.
+
+Only a fully successful run uploads the canonical
+`reservation-service-security-evidence-*` artifact. A failed run may upload the
+available SBOM and vulnerability report under the distinct
+`reservation-service-rejected-security-evidence-*` diagnostic name. That name
+is never eligible for admission or handoff.
 
 A rerun checks that its source SHA still equals the canonical repository's
 current `main` SHA before logging in or pushing. If `main` has already advanced,
@@ -670,9 +686,11 @@ After the first successful `main` publication:
    URL together.
 2. Download the
    `reservation-service-security-evidence-<run-id>-attempt-<attempt>` artifact.
-   Confirm that `reservation-service.cdx.json` and
-   `reservation-service-vulnerabilities.json` exist and that the vulnerability
-   report's `ArtifactName` equals the digest-pinned candidate in the summary.
+   Confirm that the candidate-evidence document, retained provenance bundle,
+   `reservation-service.cdx.json`, and
+   `reservation-service-vulnerabilities.json` exist. Confirm that the
+   vulnerability report's `ArtifactName` equals the digest-pinned candidate and
+   that the contract declares the same run, attempt, digest, and file hashes.
 3. In the GitHub package settings, verify the package is linked to this source
    repository and change its visibility to public. The workflow deliberately
    does not receive broader credentials to automate that one-time setting.
@@ -693,13 +711,15 @@ After the first successful `main` publication:
    `movie-platform-environments` for its separate admission and promotion
    process.
 
-If the image push succeeds but attestation, scanning, evaluation, evidence
-upload, or summary generation fails, GHCR may contain the tagged image while
-the workflow is red. A CRITICAL policy failure still uploads the generated
-reports before the job finishes. Treat every red digest as ineligible: do not
-delete it, promote it, or infer success from its presence. Retry the same run
-only if its SHA is still current `main`; otherwise merge a fix or revert so the
-cumulative current state creates the next candidate.
+If the image push succeeds but attestation, verification, scanning, evaluation,
+emission, handoff validation, evidence upload, or summary generation fails,
+GHCR may contain the tagged image while the workflow is red. A failure after
+scan generation may retain the available reports under the rejected diagnostic
+name, but it never creates the canonical handoff artifact. Treat every red
+digest as ineligible: do not delete it, promote it, or infer success from its
+presence. Retry the same run only if its SHA is still current `main`; otherwise
+merge a fix or revert so the cumulative current state creates the next
+candidate.
 
 ## Container Image
 
