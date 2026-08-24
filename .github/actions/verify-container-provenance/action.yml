@@ -1,0 +1,28 @@
+name: Verify container provenance
+description: Retain and verify the canonical candidate image provenance bundle.
+
+inputs:
+  bundle-path:
+    description: Sigstore bundle path returned by the pinned provenance action.
+    required: true
+  candidate-image:
+    description: Exact digest-pinned GHCR candidate to verify.
+    required: true
+  github-token:
+    description: GitHub token used by gh for attestation verification.
+    required: true
+  source-revision:
+    description: Full Git revision that produced the candidate.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Retain and verify candidate image provenance
+      shell: bash
+      env:
+        PROVENANCE_BUNDLE_PATH: ${{ inputs.bundle-path }}
+        CANDIDATE_IMAGE: ${{ inputs.candidate-image }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        SOURCE_REVISION: ${{ inputs.source-revision }}
+      run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/verify-provenance.sh"
