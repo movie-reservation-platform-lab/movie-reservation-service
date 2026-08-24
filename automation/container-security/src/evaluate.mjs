@@ -5,6 +5,7 @@ const immutableGhcrImagePattern = /^ghcr\.io\/[a-z0-9_.-]+\/[a-z0-9_.-]+@sha256:
 const localImagePattern =
   /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 const artifactNamePattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
+const supportedSeverities = new Set(['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 
 /**
  * @typedef {{ ArtifactName: string, Results: unknown }} TrivyReport
@@ -231,6 +232,12 @@ function parseVulnerability(vulnerabilityValue, resultIndex, vulnerabilityIndex)
   const installedVersion = requireReportString(vulnerabilityValue, 'InstalledVersion', resultIndex, vulnerabilityIndex);
   const severity = requireReportString(vulnerabilityValue, 'Severity', resultIndex, vulnerabilityIndex).toUpperCase();
   const fixedVersionValue = vulnerabilityValue.FixedVersion;
+
+  if (!supportedSeverities.has(severity)) {
+    throw new Error(
+      `Trivy vulnerability at result ${resultIndex}, index ${vulnerabilityIndex} has unsupported severity ${severity}.`,
+    );
+  }
 
   if (fixedVersionValue !== undefined && typeof fixedVersionValue !== 'string') {
     throw new Error(

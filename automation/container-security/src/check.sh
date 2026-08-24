@@ -8,7 +8,7 @@ readonly evidence_artifact_name='reservation-service-local-vulnerability-report'
 readonly trivy_image='docker.io/aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e'
 readonly trivy_cache_volume='movie-reservation-service-trivy-cache'
 
-repository_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+repository_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)
 readonly repository_root
 readonly report_path="${repository_root}/${report_relative_path}"
 readonly evidence_directory="${repository_root}/security-evidence"

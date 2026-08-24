@@ -1,12 +1,13 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const repositoryRoot = process.cwd();
 const evaluator = join(repositoryRoot, 'automation', 'container-security', 'src', 'evaluate.mjs');
+const localCheckScript = join(repositoryRoot, 'automation', 'container-security', 'src', 'check.sh');
 const fixtures = join(repositoryRoot, 'automation', 'container-security', 'test', 'fixtures');
 const immutableImage = `ghcr.io/movie-reservation-platform-lab/movie-reservation-service@sha256:${'b'.repeat(64)}`;
 const localImage = 'movie-reservation-service:local';
@@ -27,10 +28,7 @@ describe('provisional container vulnerability policy', () => {
     const packageManifest = JSON.parse(readFileSync(join(repositoryRoot, 'package.json'), 'utf8')) as {
       readonly scripts?: Readonly<Record<string, string>>;
     };
-    const localCheck = readFileSync(
-      join(repositoryRoot, 'automation', 'container-security', 'src', 'check.sh'),
-      'utf8',
-    );
+    const localCheck = readFileSync(localCheckScript, 'utf8');
     const workflow = readFileSync(join(repositoryRoot, '.github', 'workflows', 'ci.yml'), 'utf8');
     const gitignore = readFileSync(join(repositoryRoot, '.gitignore'), 'utf8');
     const pinnedTrivyImage =
@@ -57,6 +55,29 @@ describe('provisional container vulnerability policy', () => {
     expect(workflow).toContain('uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25');
     expect(workflow).toContain('version: v0.70.0');
     expect(gitignore).toMatch(/^security-evidence\/$/m);
+  });
+
+  it('resolves the local security check from the repository root', () => {
+    const fakeBin = join(temporaryDirectory, 'bin');
+    const fakeDocker = join(fakeBin, 'docker');
+    const dockerWorkingDirectory = join(temporaryDirectory, 'docker-working-directory');
+
+    mkdirSync(fakeBin);
+    writeFileSync(fakeDocker, '#!/usr/bin/env bash\nprintf \'%s\\n\' "$PWD" > "$FAKE_DOCKER_CWD"\nexit 1\n');
+    chmodSync(fakeDocker, 0o755);
+
+    const result = spawnSync('bash', [localCheckScript], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        FAKE_DOCKER_CWD: dockerWorkingDirectory,
+        PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
+      },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Docker is not available');
+    expect(readFileSync(dockerWorkingDirectory, 'utf8').trim()).toBe(repositoryRoot);
   });
 
   it('reports HIGH findings without failing the candidate', () => {
@@ -152,6 +173,29 @@ describe('provisional container vulnerability policy', () => {
 
     expect(evaluation.result.status).toBe(1);
     expect(evaluation.result.stderr).toContain('Unable to evaluate container vulnerability evidence');
+    expect(readFileSync(evaluation.githubOutput, 'utf8')).toBe('');
+    expect(evaluation.summary).toBe('');
+  });
+
+  it('fails closed when Trivy reports an unsupported severity', () => {
+    const report = JSON.parse(readFileSync(join(fixtures, 'trivy-high-only.json'), 'utf8')) as {
+      Results: Array<{ Vulnerabilities: Array<{ Severity: string }> }>;
+    };
+    const unsupportedReport = join(temporaryDirectory, 'unsupported-severity.json');
+    const firstVulnerability = report.Results[0]?.Vulnerabilities[0];
+
+    expect(firstVulnerability).toBeDefined();
+    if (firstVulnerability === undefined) {
+      throw new Error('Expected the fixture to contain a vulnerability.');
+    }
+
+    firstVulnerability.Severity = 'SUPER_HIGH';
+    writeFileSync(unsupportedReport, JSON.stringify(report));
+
+    const evaluation = runEvaluator(unsupportedReport, { GITHUB_WORKSPACE: temporaryDirectory });
+
+    expect(evaluation.result.status).toBe(1);
+    expect(evaluation.result.stderr).toContain('unsupported severity SUPER_HIGH');
     expect(readFileSync(evaluation.githubOutput, 'utf8')).toBe('');
     expect(evaluation.summary).toBe('');
   });
