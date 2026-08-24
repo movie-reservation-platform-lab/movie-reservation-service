@@ -17,8 +17,10 @@ service tests. No PR workflow receives additional permissions.
 - Step 1, the automation source and test boundary, shipped in service PR #27.
 - Step 2, image-provenance retention and verification, shipped in service PR
   #28.
-- This PR implements only the dependency-free emitter and its contract tests.
-- Workflow invocation and final handoff integration remain deferred to PR 4.
+- Step 3, the dependency-free emitter and its contract tests, shipped in service
+  PR #29.
+- This final PR 4 slice wires the merged pieces into the canonical publisher and
+  records the explicit evidence handoff.
 
 ## 2. Goals
 
@@ -47,15 +49,16 @@ service tests. No PR workflow receives additional permissions.
 
 ## 4. Current State
 
-`.github/workflows/ci.yml` already publishes one `linux/amd64` GHCR image from
-canonical `main`, creates GitHub build provenance, generates CycloneDX and Trivy
-JSON for the exact published digest, applies the CRITICAL gate, and uploads the
-two security files for 14 days.
+At the start of PR 4, `.github/workflows/ci.yml` publishes one `linux/amd64` GHCR
+image from canonical `main`, creates GitHub build provenance, generates
+CycloneDX and Trivy JSON for the exact published digest, applies the CRITICAL
+gate, and uploads the two security files for 14 days.
 
 `automation/candidate-evidence/src/contract.ts` owns the strict Zod contract and
 its generated JSON Schema. The contract requires a content-addressed Sigstore
 bundle, exact workflow and attestation identities, all vulnerability severity
-counts, and fixed evidence paths. The workflow does not yet populate it.
+counts, and fixed evidence paths. The merged dependency-free emitter can
+populate it, but the workflow does not invoke it before this slice.
 
 The local evaluator validates the Trivy report subject for the provisional
 policy. The publisher uploads under the canonical artifact name even after a
@@ -112,7 +115,9 @@ behavior needed for this slice.
    selected as candidate evidence.
 7. The existing handoff action validates and records the exact evidence artifact
    name, contract path, and evidence-package attestation URL alongside the
-   immutable image candidate.
+   immutable image candidate before canonical upload. Those outputs and the
+   summary are job-local; the successful run and uploaded canonical artifact are
+   the durable handoff boundary.
 
 ## 7. Alternatives Considered
 

@@ -29,11 +29,29 @@ inputs:
   build-ref:
     description: URL of the exact GitHub Actions run attempt.
     required: true
+  evidence-artifact-name:
+    description: Exact run-attempt artifact containing the candidate evidence package.
+    required: true
+  evidence-contract-path:
+    description: Fixed candidate-evidence contract path within the producer workspace.
+    required: true
+  evidence-attestation-url:
+    description: GitHub URL for the evidence package provenance attestation.
+    required: true
 
 outputs:
   immutable_candidate:
     description: Digest-pinned image reference eligible for downstream admission.
     value: ${{ steps.record.outputs.immutable_candidate }}
+  evidence_artifact_name:
+    description: Validated run-attempt artifact containing the candidate evidence package.
+    value: ${{ steps.record.outputs.evidence_artifact_name }}
+  evidence_contract_path:
+    description: Validated candidate-evidence contract path.
+    value: ${{ steps.record.outputs.evidence_contract_path }}
+  evidence_attestation_url:
+    description: Validated GitHub URL for the evidence package provenance attestation.
+    value: ${{ steps.record.outputs.evidence_attestation_url }}
 
 runs:
   using: composite
@@ -51,4 +69,7 @@ runs:
         SOURCE_REPOSITORY: ${{ inputs.source-repository }}
         SOURCE_REVISION: ${{ inputs.source-revision }}
         BUILD_REF: ${{ inputs.build-ref }}
+        EVIDENCE_ARTIFACT_NAME: ${{ inputs.evidence-artifact-name }}
+        EVIDENCE_CONTRACT_PATH: ${{ inputs.evidence-contract-path }}
+        EVIDENCE_ATTESTATION_URL: ${{ inputs.evidence-attestation-url }}
       run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/record.sh"

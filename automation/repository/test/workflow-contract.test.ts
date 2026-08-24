@@ -282,6 +282,8 @@ describe('repository and CI automation contract', () => {
     expect(publisher).toContain('github-token: ${{ github.token }}');
     expect(publisher).toContain('candidate-digest: ${{ steps.publish.outputs.digest }}');
     expect(publisher).toContain('source-revision: ${{ github.sha }}');
+    expect(publisher).toContain('node-version-file: .nvmrc');
+    expect(publisher).not.toMatch(/^\s+run:\s+npm\b/m);
     expect(publisher).not.toMatch(/^\s+run:\s+\|/m);
   });
 
@@ -292,7 +294,7 @@ describe('repository and CI automation contract', () => {
     const trivyAction = 'uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25';
     const uploadAction = 'uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
     const evaluatorAction = 'uses: ./.github/actions/evaluate-container-vulnerabilities';
-    const handoffAction = 'uses: ./.github/actions/record-container-candidate';
+    const handoffValidationAction = 'uses: ./.github/actions/record-container-candidate';
 
     expect(publisher.match(new RegExp(escapeRegExp(trivyAction), 'g'))).toHaveLength(2);
     expect(publisher.match(new RegExp(escapeRegExp(`image-ref: ${immutableCandidate}`), 'g'))).toHaveLength(2);
@@ -315,26 +317,57 @@ describe('repository and CI automation contract', () => {
     expect(publisher).toContain(
       'reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
     );
+    expect(publisher).toContain('run: node automation/candidate-evidence/src/emit.mjs');
+    expect(publisher).toContain('ATTESTATION_ID: ${{ steps.provenance.outputs.attestation-id }}');
+    expect(publisher).toContain('ATTESTATION_URL: ${{ steps.provenance.outputs.attestation-url }}');
+    expect(publisher).toContain('security-evidence/component-candidate-evidence-v1alpha1.json');
     expect(publisher).toContain('security-evidence/reservation-service-provenance.json');
-    expect(publisher).toContain('if: ${{ !cancelled() }}');
+    expect(
+      publisher.match(/uses: actions\/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a/g),
+    ).toHaveLength(2);
+    expect(publisher).toContain('subject-path: |');
+    expect(publisher).toContain('evidence-contract-path: security-evidence/component-candidate-evidence-v1alpha1.json');
+    expect(publisher).toContain('evidence-attestation-url: ${{ steps.evidence-provenance.outputs.attestation-url }}');
+    expect(publisher).toContain('id: handoff');
+    expect(publisher).toContain('name: ${{ steps.handoff.outputs.evidence_artifact_name }}');
+    expect(publisher).toContain('${{ steps.handoff.outputs.evidence_contract_path }}');
+    expect(publisher).toMatch(
+      /- name: Upload candidate security evidence\s+uses: actions\/upload-artifact@[0-9a-f]{40}/,
+    );
+    expect(publisher).not.toMatch(/- name: Upload candidate security evidence\s+if:/);
+    expect(publisher).toContain('if: ${{ failure() && !cancelled() }}');
+    expect(publisher).toContain(
+      'reservation-service-rejected-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+    );
     expect(publisher).toContain('if-no-files-found: error');
+    expect(publisher).toContain('if-no-files-found: warn');
     expect(publisher).toContain('retention-days: 14');
+
+    const rejectedUpload = publisher.slice(publisher.indexOf('- name: Upload rejected candidate diagnostics'));
+    expect(rejectedUpload).toContain('security-evidence/reservation-service.cdx.json');
+    expect(rejectedUpload).toContain('security-evidence/reservation-service-vulnerabilities.json');
+    expect(rejectedUpload).not.toContain('security-evidence/component-candidate-evidence-v1alpha1.json');
+    expect(rejectedUpload).not.toContain('security-evidence/reservation-service-provenance.json');
 
     const publishPosition = publisher.indexOf('uses: docker/build-push-action@');
     const attestationPosition = publisher.indexOf('uses: actions/attest-build-provenance@');
     const provenanceVerificationPosition = publisher.indexOf('uses: ./.github/actions/verify-container-provenance');
     const firstScanPosition = publisher.indexOf(trivyAction);
     const evaluationPosition = publisher.indexOf(evaluatorAction);
+    const emissionPosition = publisher.indexOf('run: node automation/candidate-evidence/src/emit.mjs');
+    const evidenceAttestationPosition = publisher.lastIndexOf('uses: actions/attest-build-provenance@');
     const uploadPosition = publisher.indexOf(uploadAction);
-    const handoffPosition = publisher.indexOf(handoffAction);
+    const handoffValidationPosition = publisher.indexOf(handoffValidationAction);
 
     expect(publishPosition).toBeGreaterThanOrEqual(0);
     expect(attestationPosition).toBeGreaterThan(publishPosition);
     expect(provenanceVerificationPosition).toBeGreaterThan(attestationPosition);
     expect(firstScanPosition).toBeGreaterThan(provenanceVerificationPosition);
     expect(evaluationPosition).toBeGreaterThan(firstScanPosition);
-    expect(uploadPosition).toBeGreaterThan(evaluationPosition);
-    expect(handoffPosition).toBeGreaterThan(uploadPosition);
+    expect(emissionPosition).toBeGreaterThan(evaluationPosition);
+    expect(evidenceAttestationPosition).toBeGreaterThan(emissionPosition);
+    expect(handoffValidationPosition).toBeGreaterThan(evidenceAttestationPosition);
+    expect(uploadPosition).toBeGreaterThan(handoffValidationPosition);
   });
 
   it('exposes script-backed local actions through explicit workflow contracts', () => {
@@ -375,10 +408,16 @@ describe('repository and CI automation contract', () => {
       'source-repository',
       'source-revision',
       'build-ref',
+      'evidence-artifact-name',
+      'evidence-contract-path',
+      'evidence-attestation-url',
     ] as const) {
       expect(recordAction).toContain(`${input}:`);
     }
     expect(recordAction).toContain('value: ${{ steps.record.outputs.immutable_candidate }}');
+    expect(recordAction).toContain('value: ${{ steps.record.outputs.evidence_artifact_name }}');
+    expect(recordAction).toContain('value: ${{ steps.record.outputs.evidence_contract_path }}');
+    expect(recordAction).toContain('value: ${{ steps.record.outputs.evidence_attestation_url }}');
     expect(recordAction).toContain(
       'run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/record.sh"',
     );

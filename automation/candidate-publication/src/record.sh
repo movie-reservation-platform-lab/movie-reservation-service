@@ -23,6 +23,9 @@ for variable_name in \
   CANDIDATE_REGISTRY \
   CANDIDATE_REPOSITORY \
   CANDIDATE_TAG \
+  EVIDENCE_ARTIFACT_NAME \
+  EVIDENCE_ATTESTATION_URL \
+  EVIDENCE_CONTRACT_PATH \
   GITHUB_OUTPUT \
   GITHUB_SERVER_URL \
   GITHUB_STEP_SUMMARY \
@@ -69,7 +72,7 @@ if [[ "${BUILD_REF}" != "${build_ref_prefix}"* ]]; then
 fi
 
 build_ref_suffix="${BUILD_REF#"${build_ref_prefix}"}"
-if [[ ! "${build_ref_suffix}" =~ ^([0-9]+)/attempts/([0-9]+)$ ]]; then
+if [[ ! "${build_ref_suffix}" =~ ^([1-9][0-9]*)/attempts/([1-9][0-9]*)$ ]]; then
   fail "Build reference does not identify an exact run attempt: ${BUILD_REF}"
 fi
 
@@ -78,6 +81,26 @@ run_attempt="${BASH_REMATCH[2]}"
 expected_tag="sha-${SOURCE_REVISION}-run-${run_id}-attempt-${run_attempt}"
 if [[ "${CANDIDATE_TAG}" != "${expected_tag}" ]]; then
   fail "Candidate tag does not match the source revision and build attempt."
+fi
+
+expected_evidence_artifact_name="reservation-service-security-evidence-${run_id}-attempt-${run_attempt}"
+if [[ "${EVIDENCE_ARTIFACT_NAME}" != "${expected_evidence_artifact_name}" ]]; then
+  fail "Evidence artifact name does not match the build attempt."
+fi
+
+readonly expected_evidence_contract_path='security-evidence/component-candidate-evidence-v1alpha1.json'
+if [[ "${EVIDENCE_CONTRACT_PATH}" != "${expected_evidence_contract_path}" ]]; then
+  fail "Evidence contract path must be ${expected_evidence_contract_path}."
+fi
+
+evidence_attestation_prefix="${GITHUB_SERVER_URL}/${SOURCE_REPOSITORY}/attestations/"
+if [[ "${EVIDENCE_ATTESTATION_URL}" != "${evidence_attestation_prefix}"* ]]; then
+  fail "Evidence attestation URL does not belong to the source repository."
+fi
+
+evidence_attestation_id="${EVIDENCE_ATTESTATION_URL#"${evidence_attestation_prefix}"}"
+if [[ ! "${evidence_attestation_id}" =~ ^[1-9][0-9]*$ ]]; then
+  fail "Evidence attestation URL does not identify an attestation."
 fi
 
 immutable_candidate="${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}"
@@ -92,6 +115,9 @@ immutable_candidate="${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}"
   printf -- "- Source repository: \`%s\`\n" "${SOURCE_REPOSITORY}"
   printf -- "- Source revision: \`%s\`\n" "${SOURCE_REVISION}"
   printf -- '- Build reference: %s\n' "${BUILD_REF}"
+  printf -- "- Evidence artifact: \`%s\`\n" "${EVIDENCE_ARTIFACT_NAME}"
+  printf -- "- Evidence contract: \`%s\`\n" "${EVIDENCE_CONTRACT_PATH}"
+  printf -- '- Evidence package attestation: %s\n' "${EVIDENCE_ATTESTATION_URL}"
   printf '\n'
   printf 'After authenticating to GHCR, verify provenance with:\n'
   printf "\`gh attestation verify oci://%s --repo %s\`\n" "${immutable_candidate}" "${SOURCE_REPOSITORY}"
@@ -100,3 +126,6 @@ immutable_candidate="${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}"
 } >> "${GITHUB_STEP_SUMMARY}"
 
 printf 'immutable_candidate=%s\n' "${immutable_candidate}" >> "${GITHUB_OUTPUT}"
+printf 'evidence_artifact_name=%s\n' "${EVIDENCE_ARTIFACT_NAME}" >> "${GITHUB_OUTPUT}"
+printf 'evidence_contract_path=%s\n' "${EVIDENCE_CONTRACT_PATH}" >> "${GITHUB_OUTPUT}"
+printf 'evidence_attestation_url=%s\n' "${EVIDENCE_ATTESTATION_URL}" >> "${GITHUB_OUTPUT}"
