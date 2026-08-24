@@ -15,9 +15,10 @@ service tests. No PR workflow receives additional permissions.
 ### Release Slice Status
 
 - Step 1, the automation source and test boundary, shipped in service PR #27.
-- This PR implements only step 2: image-provenance retention and verification.
-- Steps 3 and 4, evidence emission and final workflow/handoff integration, are
-  intentionally deferred to separate follow-up PRs.
+- Step 2, image-provenance retention and verification, shipped in service PR
+  #28.
+- This PR implements only the dependency-free emitter and its contract tests.
+- Workflow invocation and final handoff integration remain deferred to PR 4.
 
 ## 2. Goals
 
@@ -194,11 +195,12 @@ preserve active canonical `main` publication attempts.
    - Verification: fake `gh` tests prove exact verification arguments and
      failure propagation.
 3. Add dependency-free evidence emission.
-   - Files: Node emitter, workflow invocation, focused CLI tests.
+   - Files: Node emitter and focused CLI tests.
    - Verification: report subject, severity counts, hashes, and identities match;
      malformed inputs emit no file.
 4. Wire the canonical workflow and explicit handoff.
-   - Files: CI workflow and repository workflow-contract tests.
+   - Files: emitter invocation, CI workflow, and repository workflow-contract
+     tests.
    - Verification: ordering, permissions, exact paths, success-only canonical
      upload, evidence attestation, and failure diagnostics are asserted.
 5. Run checks and repository-specific reviews.

@@ -17,6 +17,7 @@ export default tseslint.config(
           allowDefaultProject: [
             '*.config.ts',
             '*.config.mjs',
+            'automation/candidate-evidence/src/emit.mjs',
             'automation/container-security/src/evaluate.mjs',
             'eslint.config.mjs',
             'vitest.config.ts',
