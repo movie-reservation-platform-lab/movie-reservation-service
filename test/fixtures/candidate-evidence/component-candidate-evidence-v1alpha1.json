@@ -1,0 +1,59 @@
+{
+  "apiVersion": "ci.movie-platform.dev/v1alpha1",
+  "kind": "ComponentCandidateEvidence",
+  "component": "reservation-service",
+  "source": {
+    "repository": "movie-reservation-platform-lab/movie-reservation-service",
+    "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "ref": "refs/heads/main"
+  },
+  "workflow": {
+    "path": ".github/workflows/ci.yml",
+    "job": "publish-candidate",
+    "runId": "123456789",
+    "runAttempt": 2,
+    "url": "https://github.com/movie-reservation-platform-lab/movie-reservation-service/actions/runs/123456789/attempts/2"
+  },
+  "candidate": {
+    "repository": "ghcr.io/movie-reservation-platform-lab/movie-reservation-service",
+    "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "platform": {
+      "os": "linux",
+      "architecture": "amd64"
+    }
+  },
+  "provenance": {
+    "subjectName": "ghcr.io/movie-reservation-platform-lab/movie-reservation-service",
+    "subjectDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "predicateType": "https://slsa.dev/provenance/v1",
+    "attestationId": "987654321",
+    "attestationUrl": "https://github.com/movie-reservation-platform-lab/movie-reservation-service/attestations/987654321",
+    "bundle": {
+      "path": "security-evidence/reservation-service-provenance.json",
+      "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "format": "sigstore-bundle-json"
+    }
+  },
+  "securityEvidence": {
+    "artifactName": "reservation-service-security-evidence-123456789-attempt-2",
+    "sbom": {
+      "path": "security-evidence/reservation-service.cdx.json",
+      "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "format": "cyclonedx-json"
+    },
+    "vulnerabilities": {
+      "path": "security-evidence/reservation-service-vulnerabilities.json",
+      "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "format": "trivy-json",
+      "subject": "ghcr.io/movie-reservation-platform-lab/movie-reservation-service@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "counts": {
+        "unknown": 0,
+        "low": 12,
+        "medium": 3,
+        "high": 2,
+        "critical": 0
+      }
+    }
+  },
+  "generatedAt": "2026-08-24T14:23:00Z"
+}
