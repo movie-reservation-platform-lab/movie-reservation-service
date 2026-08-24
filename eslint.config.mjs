@@ -17,7 +17,7 @@ export default tseslint.config(
           allowDefaultProject: [
             '*.config.ts',
             '*.config.mjs',
-            '.github/actions/evaluate-container-vulnerabilities/evaluate.mjs',
+            'automation/container-security/src/evaluate.mjs',
             'eslint.config.mjs',
             'vitest.config.ts',
           ],
@@ -49,7 +49,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['test/**/*.test.ts'],
+    files: ['test/**/*.test.ts', 'automation/**/test/**/*.test.ts'],
     languageOptions: {
       globals: {
         ...globals.node,

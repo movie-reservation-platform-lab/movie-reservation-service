@@ -99,7 +99,7 @@ EVIDENCE_ARTIFACT_NAME="${evidence_artifact_name}" \
   GITHUB_WORKSPACE="${repository_root}" \
   REPORT_PATH="${report_relative_path}" \
   SUBJECT_KIND='local' \
-  node "${repository_root}/.github/actions/evaluate-container-vulnerabilities/evaluate.mjs"
+  node "${repository_root}/automation/container-security/src/evaluate.mjs"
 evaluation_status=$?
 set -e
 

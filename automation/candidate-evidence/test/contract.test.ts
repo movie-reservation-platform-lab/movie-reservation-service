@@ -9,14 +9,15 @@ import {
   parseComponentCandidateEvidence,
   serializeComponentCandidateEvidenceJsonSchema,
   type ComponentCandidateEvidence,
-} from '../../../scripts/candidate-evidence-contract.js';
+} from '../src/contract.js';
 
 const repositoryRoot = process.cwd();
 const fixturePath = join(
   repositoryRoot,
+  'automation',
+  'candidate-evidence',
   'test',
   'fixtures',
-  'candidate-evidence',
   'component-candidate-evidence-v1alpha1.json',
 );
 

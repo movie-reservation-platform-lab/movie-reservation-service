@@ -6,7 +6,7 @@ admission, eligibility, deployment, or observed-state decisions.
 
 ## Source and generated schema
 
-`scripts/candidate-evidence-contract.ts` is the runtime source of truth for
+`automation/candidate-evidence/src/contract.ts` is the runtime source of truth for
 `ComponentCandidateEvidence v1alpha1`. It uses strict Zod objects so unknown
 fields fail at every object boundary. The generated Draft 2020-12 JSON Schema is
 committed as `component-candidate-evidence-v1alpha1.schema.json` for consumers in
