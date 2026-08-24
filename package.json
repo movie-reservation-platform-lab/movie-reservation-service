@@ -22,6 +22,7 @@
     "docker:build": "docker build --file Dockerfile --target runtime --tag movie-reservation-service:local .",
     "docker:build:debug": "docker build --file Dockerfile --target runtime-debug --tag movie-reservation-service:debug .",
     "container:security-check": "bash scripts/container-security-check.sh",
+    "contract:candidate-evidence:generate": "tsx scripts/generate-candidate-evidence-schema.ts",
     "smoke:observability": "tsx scripts/observability-smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
