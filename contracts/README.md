@@ -21,6 +21,11 @@ npm run contract:candidate-evidence:generate
 The unit test compares the generated serialization with the committed file, so
 contract changes cannot leave the JSON Schema stale.
 
+The dependency-free publisher emitter deliberately does not load Zod or another
+project dependency. Its subprocess tests parse successful output through this
+strict contract, so producer logic cannot diverge from the contract without
+failing the automation test lane.
+
 ## Semantic bindings
 
 JSON Schema enforces the document shape, constants, patterns, and closed object
