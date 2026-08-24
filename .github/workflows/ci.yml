@@ -265,6 +265,7 @@ jobs:
             org.opencontainers.image.version=${{ steps.image.outputs.tag }}
 
       - name: Attest published candidate
+        id: provenance
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-name: ${{ steps.image.outputs.image_ref }}
@@ -274,8 +275,13 @@ jobs:
           # installable container images even though they are not runnable.
           push-to-registry: false
 
-      - name: Prepare container security evidence
-        run: mkdir -p security-evidence
+      - name: Retain and verify candidate provenance
+        uses: ./.github/actions/verify-container-provenance
+        with:
+          bundle-path: ${{ steps.provenance.outputs.bundle-path }}
+          candidate-image: ${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}
+          github-token: ${{ github.token }}
+          source-revision: ${{ github.sha }}
 
       - name: Generate candidate CycloneDX SBOM
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -326,6 +332,7 @@ jobs:
           name: >-
             reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           path: |
+            security-evidence/reservation-service-provenance.json
             security-evidence/reservation-service.cdx.json
             security-evidence/reservation-service-vulnerabilities.json
           if-no-files-found: error

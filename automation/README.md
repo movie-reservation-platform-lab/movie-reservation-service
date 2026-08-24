@@ -4,8 +4,8 @@ This directory owns CI and repository-control helpers. It is separate from the
 reservation service under `src/` and from service tests under `test/`.
 
 - `candidate-evidence/`: candidate-evidence contract and schema generation.
-- `candidate-publication/`: candidate identity and handoff helpers used by
-  local GitHub composite actions.
+- `candidate-publication/`: candidate identity, provenance, and handoff
+  helpers used by local GitHub composite actions.
 - `container-security/`: local and hosted vulnerability-policy evaluation.
 - `repository/`: workflow and repository-structure contract tests.
 

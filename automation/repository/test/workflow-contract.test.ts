@@ -130,6 +130,7 @@ describe('repository and CI automation contract', () => {
     const allowedLocalActionReferences = [
       './.github/actions/evaluate-container-vulnerabilities',
       './.github/actions/prepare-container-candidate',
+      './.github/actions/verify-container-provenance',
       './.github/actions/evaluate-container-vulnerabilities',
       './.github/actions/record-container-candidate',
     ] as const;
@@ -264,6 +265,7 @@ describe('repository and CI automation contract', () => {
     expect(publisher).toContain('uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25');
     expect(publisher).toContain('uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a');
     expect(publisher).toContain('uses: ./.github/actions/prepare-container-candidate');
+    expect(publisher).toContain('uses: ./.github/actions/verify-container-provenance');
     expect(publisher).toContain('uses: ./.github/actions/evaluate-container-vulnerabilities');
     expect(publisher).toContain('uses: ./.github/actions/record-container-candidate');
     expect(publisher).toContain('expected-repository: movie-reservation-platform-lab/movie-reservation-service');
@@ -276,6 +278,8 @@ describe('repository and CI automation contract', () => {
     expect(publisher).toContain('subject-digest: ${{ steps.publish.outputs.digest }}');
     expect(publisher).toContain('push-to-registry: false');
     expect(publisher).not.toContain('push-to-registry: true');
+    expect(publisher).toContain('bundle-path: ${{ steps.provenance.outputs.bundle-path }}');
+    expect(publisher).toContain('github-token: ${{ github.token }}');
     expect(publisher).toContain('candidate-digest: ${{ steps.publish.outputs.digest }}');
     expect(publisher).toContain('source-revision: ${{ github.sha }}');
     expect(publisher).not.toMatch(/^\s+run:\s+\|/m);
@@ -311,12 +315,14 @@ describe('repository and CI automation contract', () => {
     expect(publisher).toContain(
       'reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
     );
+    expect(publisher).toContain('security-evidence/reservation-service-provenance.json');
     expect(publisher).toContain('if: ${{ !cancelled() }}');
     expect(publisher).toContain('if-no-files-found: error');
     expect(publisher).toContain('retention-days: 14');
 
     const publishPosition = publisher.indexOf('uses: docker/build-push-action@');
     const attestationPosition = publisher.indexOf('uses: actions/attest-build-provenance@');
+    const provenanceVerificationPosition = publisher.indexOf('uses: ./.github/actions/verify-container-provenance');
     const firstScanPosition = publisher.indexOf(trivyAction);
     const evaluationPosition = publisher.indexOf(evaluatorAction);
     const uploadPosition = publisher.indexOf(uploadAction);
@@ -324,7 +330,8 @@ describe('repository and CI automation contract', () => {
 
     expect(publishPosition).toBeGreaterThanOrEqual(0);
     expect(attestationPosition).toBeGreaterThan(publishPosition);
-    expect(firstScanPosition).toBeGreaterThan(attestationPosition);
+    expect(provenanceVerificationPosition).toBeGreaterThan(attestationPosition);
+    expect(firstScanPosition).toBeGreaterThan(provenanceVerificationPosition);
     expect(evaluationPosition).toBeGreaterThan(firstScanPosition);
     expect(uploadPosition).toBeGreaterThan(evaluationPosition);
     expect(handoffPosition).toBeGreaterThan(uploadPosition);
@@ -334,6 +341,7 @@ describe('repository and CI automation contract', () => {
     const evaluateAction = readTextFile('.github/actions/evaluate-container-vulnerabilities/action.yml');
     const prepareAction = readTextFile('.github/actions/prepare-container-candidate/action.yml');
     const recordAction = readTextFile('.github/actions/record-container-candidate/action.yml');
+    const verifyProvenanceAction = readTextFile('.github/actions/verify-container-provenance/action.yml');
 
     expect(evaluateAction).toContain('using: composite');
     for (const input of ['report-path', 'expected-image', 'subject-kind', 'evidence-artifact-name'] as const) {
@@ -373,6 +381,14 @@ describe('repository and CI automation contract', () => {
     expect(recordAction).toContain('value: ${{ steps.record.outputs.immutable_candidate }}');
     expect(recordAction).toContain(
       'run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/record.sh"',
+    );
+
+    expect(verifyProvenanceAction).toContain('using: composite');
+    for (const input of ['bundle-path', 'candidate-image', 'github-token', 'source-revision'] as const) {
+      expect(verifyProvenanceAction).toContain(`${input}:`);
+    }
+    expect(verifyProvenanceAction).toContain(
+      'run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/verify-provenance.sh"',
     );
   });
 });
