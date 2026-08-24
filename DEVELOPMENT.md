@@ -453,6 +453,13 @@ Run tests once:
 npm test
 ```
 
+That command discovers only service tests under `test/`. Run CI and repository
+automation tests separately:
+
+```bash
+npm run test:automation
+```
+
 Run tests in watch mode while editing:
 
 ```bash
@@ -473,6 +480,8 @@ npm run check
 - `oxlint . --deny-warnings` for the fast Rust-based lint pass.
 - `eslint .` for the established TypeScript lint pass.
 - `tsc -p tsconfig.json --noEmit` for TypeScript type safety without writing build output.
+- `tsc -p automation/tsconfig.json --noEmit` for repository automation type safety.
+- the dedicated automation Vitest config for CI and repository helper tests.
 - `vitest run test/unit` for fast unit behavior tests.
 - `vitest run test/integration` for in-process NestJS and adapter integration tests.
 
@@ -492,6 +501,8 @@ job; it should not be hidden inside a general quality or test step.
 GitHub Actions keeps each validation concern visible:
 
 - `service-quality`: `format:check`, `lint`, and `typecheck`;
+- `automation-quality`: `typecheck:automation` and `test:automation` for CI and
+  repository helpers;
 - `service-unit-tests`: `test:unit` after quality passes;
 - `service-integration-tests`: `test:integration` after quality passes;
 - `service-build`: `build` after quality passes;
@@ -501,6 +512,11 @@ GitHub Actions keeps each validation concern visible:
 - `publish-candidate`: a `linux/amd64` GHCR build, provenance attestation, and
   exact-digest security evidence gate after the same four jobs pass on a
   canonical-repository push to `main`.
+
+Formatting and linting remain repository-wide checks under `service-quality`.
+The concern boundary applies to TypeScript projects and test execution: service
+unit/integration commands never discover automation tests, and automation tests
+run only in `automation-quality`.
 
 Each service job installs from `package-lock.json` independently with `npm ci`.
 Those jobs may update GitHub's npm download cache, but they have no repository,
@@ -727,9 +743,11 @@ and digests together through a reviewed dependency PR; the longer-term update
 process remains tracked in repository issue #10.
 
 The host build also compiles `scripts/` and `test/` through the shared
-`tsconfig.json`. Those paths are intentionally absent from the production image
-context; any future non-`src/` input required to compile the service must update
-the allowlist in the same change.
+`tsconfig.json`. CI and repository helpers live under `automation/` and are
+typechecked separately through `automation/tsconfig.json`; their tests run only
+through `test:automation`. All of those paths are intentionally absent from the
+production image context. Any future non-`src/` input required to compile the
+service must update the allowlist in the same change.
 
 Generated GraphQL schema output remains `schema.gql` under the service root.
 `db:migrate` and `db:migrate:status` remain source-mode commands and cannot run

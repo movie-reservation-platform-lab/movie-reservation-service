@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const repositoryRoot = process.cwd();
-const evaluator = join(repositoryRoot, '.github', 'actions', 'evaluate-container-vulnerabilities', 'evaluate.mjs');
-const fixtures = join(repositoryRoot, 'test', 'fixtures', 'security');
+const evaluator = join(repositoryRoot, 'automation', 'container-security', 'src', 'evaluate.mjs');
+const fixtures = join(repositoryRoot, 'automation', 'container-security', 'test', 'fixtures');
 const immutableImage = `ghcr.io/movie-reservation-platform-lab/movie-reservation-service@sha256:${'b'.repeat(64)}`;
 const localImage = 'movie-reservation-service:local';
 const evidenceArtifactName = 'reservation-service-security-evidence-123-attempt-2';
@@ -27,13 +27,18 @@ describe('provisional container vulnerability policy', () => {
     const packageManifest = JSON.parse(readFileSync(join(repositoryRoot, 'package.json'), 'utf8')) as {
       readonly scripts?: Readonly<Record<string, string>>;
     };
-    const localCheck = readFileSync(join(repositoryRoot, 'scripts', 'container-security-check.sh'), 'utf8');
+    const localCheck = readFileSync(
+      join(repositoryRoot, 'automation', 'container-security', 'src', 'check.sh'),
+      'utf8',
+    );
     const workflow = readFileSync(join(repositoryRoot, '.github', 'workflows', 'ci.yml'), 'utf8');
     const gitignore = readFileSync(join(repositoryRoot, '.gitignore'), 'utf8');
     const pinnedTrivyImage =
       'docker.io/aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e';
 
-    expect(packageManifest.scripts?.['container:security-check']).toBe('bash scripts/container-security-check.sh');
+    expect(packageManifest.scripts?.['container:security-check']).toBe(
+      'bash automation/container-security/src/check.sh',
+    );
     expect(localCheck).toContain(`readonly trivy_image='${pinnedTrivyImage}'`);
     expect(localCheck).toContain("readonly local_image='movie-reservation-service:local'");
     expect(localCheck).toContain('DOCKER_DEFAULT_PLATFORM=linux/amd64 npm run docker:build');
@@ -44,7 +49,7 @@ describe('provisional container vulnerability policy', () => {
     expect(localCheck).toContain('--ignore-unfixed=false');
     expect(localCheck).toContain('--exit-code 0');
     expect(localCheck).toContain('--timeout 5m');
-    expect(localCheck).toContain('.github/actions/evaluate-container-vulnerabilities/evaluate.mjs');
+    expect(localCheck).toContain('automation/container-security/src/evaluate.mjs');
     expect(localCheck).toContain('EXPECTED_IMAGE="${local_image}"');
     expect(localCheck).toContain("SUBJECT_KIND='local'");
     expect(localCheck).toContain('exit "${evaluation_status}"');

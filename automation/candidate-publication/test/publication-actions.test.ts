@@ -6,8 +6,8 @@ import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const repositoryRoot = process.cwd();
-const prepareScript = join(repositoryRoot, '.github', 'actions', 'prepare-container-candidate', 'prepare.sh');
-const recordScript = join(repositoryRoot, '.github', 'actions', 'record-container-candidate', 'record.sh');
+const prepareScript = join(repositoryRoot, 'automation', 'candidate-publication', 'src', 'prepare.sh');
+const recordScript = join(repositoryRoot, 'automation', 'candidate-publication', 'src', 'record.sh');
 const sourceRevision = 'a'.repeat(40);
 const imageDigest = `sha256:${'b'.repeat(64)}`;
 const sourceRepository = 'movie-reservation-platform-lab/movie-reservation-service';

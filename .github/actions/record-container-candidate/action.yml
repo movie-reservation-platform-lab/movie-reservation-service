@@ -51,4 +51,4 @@ runs:
         SOURCE_REPOSITORY: ${{ inputs.source-repository }}
         SOURCE_REVISION: ${{ inputs.source-revision }}
         BUILD_REF: ${{ inputs.build-ref }}
-      run: bash "${{ github.action_path }}/record.sh"
+      run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/record.sh"

@@ -17,7 +17,7 @@ interface PackageLock {
 const repositoryRoot = process.cwd();
 const standaloneSurfaces = ['docker-compose.yml', 'DEVELOPMENT.md', 'README.md', 'src/service-metadata.ts'] as const;
 
-describe('standalone repository extraction contract', () => {
+describe('repository and CI automation contract', () => {
   it('uses one root package and lockfile without workspace-scoped scripts', () => {
     const packageManifest = readJsonFile<PackageManifest>('package.json');
     const packageLock = readJsonFile<PackageLock>('package-lock.json');
@@ -29,6 +29,20 @@ describe('standalone repository extraction contract', () => {
     expect(packageLock.packages?.['']?.name).toBe(packageManifest.name);
     expect(scripts).not.toMatch(/(?:^|\s)npm\s+(?:-w|--workspace)(?:\s|=)/);
     expect(scripts).not.toContain('../node_modules');
+  });
+
+  it('keeps repository automation outside service test discovery', () => {
+    const packageManifest = readJsonFile<PackageManifest>('package.json');
+    const serviceVitestConfig = readTextFile('vitest.config.ts');
+    const automationVitestConfig = readTextFile('automation/vitest.config.ts');
+
+    expect(packageManifest.scripts?.['test:unit']).toBe('vitest run test/unit');
+    expect(packageManifest.scripts?.['test:integration']).toBe('vitest run test/integration');
+    expect(packageManifest.scripts?.['test:automation']).toBe('vitest run --config automation/vitest.config.ts');
+    expect(serviceVitestConfig).toContain("include: ['test/**/*.test.ts']");
+    expect(serviceVitestConfig).not.toContain('automation/');
+    expect(automationVitestConfig).toContain("include: ['automation/**/test/**/*.test.ts']");
+    expect(automationVitestConfig).not.toContain("include: ['test/**/*.test.ts']");
   });
 
   it.each(standaloneSurfaces)('%s keeps paths relative to this repository root', (relativePath) => {
@@ -94,7 +108,12 @@ describe('standalone repository extraction contract', () => {
       'service-integration-tests',
       'service-build',
     ] as const;
-    const expectedJobs = [...serviceJobs, 'container-security-check', 'publish-candidate'] as const;
+    const expectedJobs = [
+      ...serviceJobs,
+      'automation-quality',
+      'container-security-check',
+      'publish-candidate',
+    ] as const;
     const actionReferences = [...workflow.matchAll(/^\s+uses:\s+(\S+)/gm)].flatMap((match) =>
       match[1] === undefined ? [] : [match[1]],
     );
@@ -135,6 +154,8 @@ describe('standalone repository extraction contract', () => {
     expect(workflow).toContain('run: npm run typecheck');
     expect(workflow).toContain('run: npm run test:unit');
     expect(workflow).toContain('run: npm run test:integration');
+    expect(workflow).toContain('run: npm run typecheck:automation');
+    expect(workflow).toContain('run: npm run test:automation');
     expect(workflow).toContain('run: npm run build');
     expect(workflow).toContain('run: npm run docker:build');
     expect(workflow).toMatch(/^permissions:\s*\n\s+contents: read$/m);
@@ -151,6 +172,12 @@ describe('standalone repository extraction contract', () => {
       expect(readWorkflowJob(workflow, job)).toMatch(/^ {4}needs:\s*\n {6}- service-quality$/m);
     }
 
+    const automationJob = readWorkflowJob(workflow, 'automation-quality');
+    expect(automationJob).toContain('run: npm run typecheck:automation');
+    expect(automationJob).toContain('run: npm run test:automation');
+    expect(automationJob).not.toContain('run: npm run test:unit');
+    expect(automationJob).not.toContain('run: npm run test:integration');
+
     const containerSecurityJob = readWorkflowJob(workflow, 'container-security-check');
     expect(containerSecurityJob).toContain('DOCKER_DEFAULT_PLATFORM: linux/amd64');
     expect(containerSecurityJob).toContain("github.event_name != 'push'");
@@ -158,7 +185,7 @@ describe('standalone repository extraction contract', () => {
     expect(containerSecurityJob).toContain(
       "github.repository != 'movie-reservation-platform-lab/movie-reservation-service'",
     );
-    expect(containerSecurityJob).toMatch(/^ {4}needs:\s*\n {6}- service-quality$/m);
+    expect(containerSecurityJob).toMatch(/^ {4}needs:\s*\n {6}- automation-quality\s*\n {6}- service-quality$/m);
     expect(containerSecurityJob).toMatch(/permissions:\s*\n\s+contents: read/);
     expect(containerSecurityJob).not.toMatch(/^\s+[a-z-]+:\s+write$/m);
     expect(containerSecurityJob).not.toMatch(/docker\/login-action|docker\/build-push-action|push: true/);
@@ -223,6 +250,7 @@ describe('standalone repository extraction contract', () => {
     for (const prerequisite of serviceJobs) {
       expect(publisher).toContain(`- ${prerequisite}`);
     }
+    expect(publisher).toContain('- automation-quality');
 
     expect(publisher).toMatch(
       /permissions:\s*\n\s+contents: read\s*\n\s+packages: write\s*\n\s+id-token: write\s*\n\s+attestations: write/,
@@ -314,7 +342,9 @@ describe('standalone repository extraction contract', () => {
     for (const output of ['high-count', 'critical-count', 'policy-result'] as const) {
       expect(evaluateAction).toContain(`value: \${{ steps.evaluate.outputs.${output} }}`);
     }
-    expect(evaluateAction).toContain('run: node "${{ github.action_path }}/evaluate.mjs"');
+    expect(evaluateAction).toContain(
+      'run: node "${{ github.action_path }}/../../../automation/container-security/src/evaluate.mjs"',
+    );
 
     expect(prepareAction).toContain('using: composite');
     expect(prepareAction).toContain('expected-repository:');
@@ -322,7 +352,9 @@ describe('standalone repository extraction contract', () => {
     for (const output of ['registry', 'repository', 'image_ref', 'tag', 'build_ref'] as const) {
       expect(prepareAction).toContain(`value: \${{ steps.prepare.outputs.${output} }}`);
     }
-    expect(prepareAction).toContain('run: bash "${{ github.action_path }}/prepare.sh"');
+    expect(prepareAction).toContain(
+      'run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/prepare.sh"',
+    );
 
     expect(recordAction).toContain('using: composite');
     for (const input of [
@@ -339,7 +371,9 @@ describe('standalone repository extraction contract', () => {
       expect(recordAction).toContain(`${input}:`);
     }
     expect(recordAction).toContain('value: ${{ steps.record.outputs.immutable_candidate }}');
-    expect(recordAction).toContain('run: bash "${{ github.action_path }}/record.sh"');
+    expect(recordAction).toContain(
+      'run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/record.sh"',
+    );
   });
 });
 

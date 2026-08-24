@@ -24,7 +24,9 @@ application logic, persistence adapters, and service-level observability.
 - `src/infrastructure/`: persistence, configuration, observability, and other
   concrete adapters.
 - `src/presentation/`: NestJS HTTP and GraphQL delivery adapters.
-- `test/`: unit, integration, e2e, support, and contract-oriented tests.
+- `test/`: service unit, integration, e2e, and shared test support.
+- `automation/`: CI and repository automation source, co-located tests, and
+  automation-specific TypeScript/Vitest configuration.
 - `observability/`: local collector and dashboard configuration.
 - `.ai/`: canonical AI guidance, skills, and read-only review agents.
 
@@ -35,6 +37,7 @@ application logic, persistence adapters, and service-level observability.
 - Full local check: `npm run check`
 - CI-equivalent check: `npm run ci`
 - Typecheck: `npm run typecheck`
+- Automation checks: `npm run typecheck:automation && npm run test:automation`
 - Unit tests: `npm run test:unit`
 - Integration tests: `npm run test:integration`
 - Build: `npm run build`
@@ -74,6 +77,8 @@ useful check while iterating, then run `npm run check` before handoff.
   authentication, authorization, and error translation.
 - Add disposable-Postgres coverage for idempotency, concurrency, persistence,
   claims, retries, and transactional state transitions.
+- Keep CI and repository automation tests under `automation/`; do not include
+  them in service unit or integration test execution.
 
 ## Safety
 

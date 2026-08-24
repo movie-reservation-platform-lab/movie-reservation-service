@@ -37,4 +37,4 @@ runs:
         EXPECTED_IMAGE: ${{ inputs.expected-image }}
         SUBJECT_KIND: ${{ inputs.subject-kind }}
         EVIDENCE_ARTIFACT_NAME: ${{ inputs.evidence-artifact-name }}
-      run: node "${{ github.action_path }}/evaluate.mjs"
+      run: node "${{ github.action_path }}/../../../automation/container-security/src/evaluate.mjs"

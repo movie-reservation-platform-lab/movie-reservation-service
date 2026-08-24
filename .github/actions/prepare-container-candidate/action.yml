@@ -36,4 +36,4 @@ runs:
       env:
         EXPECTED_REPOSITORY: ${{ inputs.expected-repository }}
         EXPECTED_REF: ${{ inputs.expected-ref }}
-      run: bash "${{ github.action_path }}/prepare.sh"
+      run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/prepare.sh"
