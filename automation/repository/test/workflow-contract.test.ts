@@ -270,8 +270,13 @@ describe('repository and CI automation contract', () => {
     expect(publisher).toContain('uses: ./.github/actions/record-container-candidate');
     expect(publisher).toContain('expected-repository: movie-reservation-platform-lab/movie-reservation-service');
     expect(publisher).toContain('expected-ref: refs/heads/main');
-    expect(publisher).toContain('platforms: linux/amd64');
-    expect(publisher).toContain('push: true');
+    const buildPushStart = publisher.indexOf('uses: docker/build-push-action@');
+    const buildPushEnd = publisher.indexOf('\n      - name:', buildPushStart);
+    const buildPushStep = publisher.slice(buildPushStart, buildPushEnd);
+    expect(buildPushStep).toContain('platforms: linux/amd64');
+    expect(buildPushStep.match(/^\s+provenance: false$/gm)).toHaveLength(1);
+    expect(buildPushStep).not.toMatch(/^\s+(?:attests|sbom):/gm);
+    expect(buildPushStep).toContain('push: true');
     expect(publisher).toContain('org.opencontainers.image.source=');
     expect(publisher).toContain('org.opencontainers.image.revision=');
     expect(publisher).toContain('org.opencontainers.image.version=');
