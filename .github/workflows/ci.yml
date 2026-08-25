@@ -262,6 +262,7 @@ jobs:
           context: .
           file: Dockerfile
           platforms: linux/amd64
+          provenance: false
           push: true
           tags: ${{ steps.image.outputs.image_ref }}:${{ steps.image.outputs.tag }}
           labels: |
