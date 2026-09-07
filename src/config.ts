@@ -12,6 +12,9 @@ export type ReservationWorkerMode = z.infer<typeof reservationWorkerModeSchema>;
 export type ReservationFailureInjectionMode = z.infer<typeof reservationFailureInjectionModeSchema>;
 export type CompositionProfile = z.infer<typeof compositionProfileSchema>;
 
+export type DemoAuthSettings =
+  { readonly enabled: false } | { readonly enabled: true; readonly username: string; readonly password: string };
+
 export type ReservationFailureInjection =
   | { readonly mode: Extract<ReservationFailureInjectionMode, 'disabled'> }
   | {
@@ -88,7 +91,12 @@ const configSchema = z
     PORT: z.coerce.number().default(3000),
     HOST: z.string().min(1).default('127.0.0.1'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
-    SERVICE_VERSION: z.string().min(1).default(SERVICE_VERSION),
+    SERVICE_VERSION: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[^\p{Cc}\p{Cf}]+$/u)
+      .default(SERVICE_VERSION),
     COMPOSITION_PROFILE: compositionProfileSchema.default('local-fixed-user'),
     DATABASE_URL: z.string().url().optional(),
     DATABASE_POOL_MIN: z.coerce.number().int().min(0).default(0),
@@ -104,6 +112,16 @@ const configSchema = z
     RESERVATION_FAILURE_INJECTION_SALT: z.string().min(1).optional(),
     NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
     OTEL_SERVICE_NAME: z.string().min(1).default('movie-reservation-service'),
+    DEPLOYMENT_ENVIRONMENT: z
+      .string()
+      .regex(/^[A-Za-z0-9._:/@+-]{1,128}$/)
+      .default('local'),
+    DEMO_AUTH_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    DEMO_AUTH_USERNAME: z.string().max(256).optional(),
+    DEMO_AUTH_PASSWORD: z.string().max(1024).optional(),
     ENABLE_GRAPHIQL: z
       .enum(['true', 'false'])
       .transform((value) => value === 'true')
@@ -134,10 +152,33 @@ const configSchema = z
       RESERVATION_FAILURE_INJECTION_SALT: value.RESERVATION_FAILURE_INJECTION_SALT,
       NODE_ENV: value.NODE_ENV,
       OTEL_SERVICE_NAME: value.OTEL_SERVICE_NAME,
+      DEPLOYMENT_ENVIRONMENT: value.DEPLOYMENT_ENVIRONMENT,
+      DEMO_AUTH_ENABLED: value.DEMO_AUTH_ENABLED,
+      DEMO_AUTH_USERNAME: value.DEMO_AUTH_USERNAME,
+      DEMO_AUTH_PASSWORD: value.DEMO_AUTH_PASSWORD,
       ENABLE_GRAPHIQL: value.ENABLE_GRAPHIQL,
     };
   })
   .superRefine((value, context) => {
+    if (value.DEMO_AUTH_ENABLED) {
+      if (value.NODE_ENV === 'staging' || value.NODE_ENV === 'production') {
+        context.addIssue({
+          code: 'custom',
+          path: ['DEMO_AUTH_ENABLED'],
+          message: 'demo authentication is only allowed in development and test environments',
+        });
+      }
+      for (const key of ['DEMO_AUTH_USERNAME', 'DEMO_AUTH_PASSWORD'] as const) {
+        if (value[key] === undefined || value[key]?.trim().length === 0) {
+          context.addIssue({
+            code: 'custom',
+            path: [key],
+            message: `${key} is required when demo authentication is enabled`,
+          });
+        }
+      }
+    }
+
     if (value.AUTH_MODE.startsWith('local-') && (value.NODE_ENV === 'staging' || value.NODE_ENV === 'production')) {
       context.addIssue({
         code: 'custom',
@@ -214,11 +255,15 @@ const configSchema = z
       RESERVATION_FAILURE_INJECTION_MODE,
       RESERVATION_FAILURE_INJECTION_RATE,
       RESERVATION_FAILURE_INJECTION_SALT,
+      DEMO_AUTH_ENABLED,
+      DEMO_AUTH_USERNAME,
+      DEMO_AUTH_PASSWORD,
       ...rest
     } = value;
 
     return {
       ...rest,
+      DEMO_AUTH: createDemoAuthSettings(DEMO_AUTH_ENABLED, DEMO_AUTH_USERNAME, DEMO_AUTH_PASSWORD),
       RESERVATION_FAILURE_INJECTION: createReservationFailureInjection({
         RESERVATION_FAILURE_INJECTION_MODE,
         RESERVATION_FAILURE_INJECTION_RATE,
@@ -227,6 +272,20 @@ const configSchema = z
       ENABLE_GRAPHIQL: value.ENABLE_GRAPHIQL ?? (value.NODE_ENV === 'development' || value.NODE_ENV === 'test'),
     };
   });
+
+function createDemoAuthSettings(
+  enabled: boolean,
+  username: string | undefined,
+  password: string | undefined,
+): DemoAuthSettings {
+  if (!enabled) {
+    return { enabled: false };
+  }
+  if (username === undefined || password === undefined) {
+    throw new Error('Demo authentication requires explicit credentials');
+  }
+  return { enabled: true, username, password };
+}
 
 /**
  * Parses and validates config (like building a Pydantic model instance).

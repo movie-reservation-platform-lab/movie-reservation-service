@@ -1,5 +1,8 @@
 import { type DynamicModule, MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 
+import type { AuthenticationAuditRecorder } from '../../application/audit/ports/authentication-audit-recorder';
+import { AUTHENTICATION_AUDIT_RECORDER } from '../../di/audit/audit.tokens';
+
 import {
   MovieReservationsCompositionModule,
   type MovieReservationsCompositionOptions,
@@ -15,11 +18,15 @@ import { MovieReservationsResolver } from './movie-reservations.resolver';
  */
 @Module({})
 export class MovieReservationsGraphqlModule implements NestModule {
-  static forRoot(options: MovieReservationsCompositionOptions): DynamicModule {
+  static forRoot(options: MovieReservationsCompositionOptions, audit: AuthenticationAuditRecorder): DynamicModule {
     return {
       module: MovieReservationsGraphqlModule,
       imports: [MovieReservationsCompositionModule.forRoot(options)],
-      providers: [GraphqlAuthenticationMiddleware, MovieReservationsResolver],
+      providers: [
+        { provide: AUTHENTICATION_AUDIT_RECORDER, useValue: audit },
+        GraphqlAuthenticationMiddleware,
+        MovieReservationsResolver,
+      ],
     };
   }
 

@@ -48,6 +48,7 @@ export class RequestContextMiddleware implements NestMiddleware {
       traceparentHeader: req.headers.traceparent,
       tracestateHeader: req.headers.tracestate,
       awsXAmznTraceIdHeader: req.headers['x-amzn-trace-id'],
+      awsCloudfrontRequestIdHeader: req.headers['x-amz-cf-id'],
     });
 
     res.setHeader('X-Correlation-Id', context.correlationId);

@@ -21,6 +21,7 @@ export interface IncomingRequestContextInput {
   readonly traceparentHeader: string | readonly string[] | undefined;
   readonly tracestateHeader: string | readonly string[] | undefined;
   readonly awsXAmznTraceIdHeader: string | readonly string[] | undefined;
+  readonly awsCloudfrontRequestIdHeader?: string | readonly string[] | undefined;
 }
 
 /**
@@ -47,6 +48,10 @@ function readOptionalContextFields(input: IncomingRequestContextInput): Partial<
     ...readOptionalField(
       'awsXAmznTraceId',
       normalizeOptionalHeaderValue(readFirstHeaderValue(input.awsXAmznTraceIdHeader), 512),
+    ),
+    ...readOptionalField(
+      'awsCloudfrontRequestId',
+      normalizeOptionalHeaderValue(readFirstHeaderValue(input.awsCloudfrontRequestIdHeader), 512),
     ),
   };
 }

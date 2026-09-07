@@ -32,6 +32,8 @@ export interface RequestContext {
   readonly tracestate?: string;
   /** AWS edge/proxy trace metadata used only as a secondary cross-check. */
   readonly awsXAmznTraceId?: string;
+  /** CloudFront request ID, only when that ingress actually supplied the header. */
+  readonly awsCloudfrontRequestId?: string;
   /** Inbound HTTP method captured by the HTTP boundary. */
   readonly method?: string;
   /** Inbound route/path captured by the HTTP boundary. */

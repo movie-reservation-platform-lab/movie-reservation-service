@@ -51,6 +51,13 @@ only one checkout or worktree at a time.
 See [DEVELOPMENT.md](DEVELOPMENT.md) for env setup, database seeding, local e2e,
 debugging, and observability details.
 
+## Authentication Audit Demo
+
+The opt-in `/demo/auth/login` credential check emits OCSF audit events on stdout
+for FireLens routing. It leaves the existing reservation demo's authentication
+unchanged. See [the demo guide](docs/audit-authentication-demo.md) for setup,
+request examples, correlation fields and delivery limits.
+
 ## Container Image
 
 ```sh
