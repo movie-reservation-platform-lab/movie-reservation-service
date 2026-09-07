@@ -11,6 +11,7 @@ import schema from '../../fixtures/audit/platform-audit-event-v1.schema.json';
 interface ExportedSpan {
   readonly traceId: string;
   readonly spanId: string;
+  readonly attributes?: readonly { readonly key: string; readonly value: { readonly stringValue?: string } }[];
 }
 
 interface TraceExport {
@@ -102,6 +103,7 @@ describe('audit event correlation with the real OpenTelemetry bootstrap', () => 
           'x-correlation-id': 'live-action-1',
           traceparent: '00-6a9dd2710123456789abcdef01234567-1111111111111111-01',
           'x-amzn-trace-id': 'Root=1-6a9dd271-0123456789abcdef01234567',
+          'x-amz-cf-id': 'test-cloudfront-request-id',
         },
         body: JSON.stringify({ username: 'private-user-attempt', password: 'private-wrong-attempt' }),
       });
@@ -130,6 +132,20 @@ describe('audit event correlation with the real OpenTelemetry bootstrap', () => 
               spanId: audit.unmapped.platform.span_id,
             }),
           );
+          const auditSpan = spans.find((span) => span.spanId === audit?.unmapped.platform.span_id);
+          const attributes = Object.fromEntries(
+            (auditSpan?.attributes ?? []).map((attribute) => [attribute.key, attribute.value.stringValue]),
+          );
+          expect(attributes).toMatchObject({
+            'audit.event_id': body.audit_event_id,
+            'audit.outcome': 'INVALID_CREDENTIALS',
+            'app.request_id': 'live-request-1',
+            'app.correlation_id': 'live-action-1',
+            'aws.alb.trace_id': 'Root=1-6a9dd271-0123456789abcdef01234567',
+            'aws.cloudfront.request_id': 'test-cloudfront-request-id',
+          });
+          expect(JSON.stringify(auditSpan)).not.toContain('private-user-attempt');
+          expect(JSON.stringify(auditSpan)).not.toContain('private-wrong-attempt');
         },
         { timeout: 5_000 },
       );

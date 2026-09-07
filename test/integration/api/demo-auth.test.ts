@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 import { createApp } from '../../../src/app';
 import type { AuthenticationAuditEvent } from '../../../src/application/audit/authentication-audit-event';
+import type { AuditEventSink } from '../../../src/application/audit/ports/audit-event-sink';
 import type { DemoLoginResult } from '../../../src/application/authentication/demo-login.service';
 import { RequestAuthenticationAuditRecorder } from '../../../src/infrastructure/audit/request-authentication-audit-recorder';
 import type { ApplicationLogger } from '../../../src/infrastructure/observability/application-logger';
@@ -21,17 +22,19 @@ describe('opt-in demo credential check over HTTP', () => {
   let jwtApp: INestApplication;
   const events: AuthenticationAuditEvent[] = [];
   const logger = { info: vi.fn<ApplicationLogger['info']>(), error: vi.fn<ApplicationLogger['error']>() };
+  const sink: AuditEventSink = {
+    emit(event) {
+      events.push(event);
+      return { accepted: true };
+    },
+  };
   const recorder = new RequestAuthenticationAuditRecorder(
     {
       serviceName: 'movie-reservation-service',
       serviceVersion: 'test-build',
       environment: 'test',
     },
-    {
-      emit(event) {
-        events.push(event);
-      },
-    },
+    sink,
     logger,
   );
 
@@ -62,6 +65,7 @@ describe('opt-in demo credential check over HTTP', () => {
     const body = response.body as DemoLoginResult;
 
     expect(response.status).toBe(401);
+    expect(response.headers['cache-control']).toBe('no-store');
     expect(response.body).toEqual({
       authenticated: false,
       message: 'Invalid credentials',
@@ -91,6 +95,7 @@ describe('opt-in demo credential check over HTTP', () => {
     const response = await request(app.getHttpServer()).post('/demo/auth/login').send({ username, password });
 
     expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
     expect(response.body).toEqual({
       authenticated: true,
       message: 'Demo credentials accepted',
@@ -104,6 +109,29 @@ describe('opt-in demo credential check over HTTP', () => {
     expect(JSON.stringify(events)).not.toContain(password);
     expect(JSON.stringify(events)).not.toContain(username);
   });
+
+  it.each(['buffer_full', 'write_failed', 'throw'] as const)(
+    'returns redacted 503 instead of authenticating when local audit output reports %s',
+    async (failure) => {
+      const unavailable = vi.spyOn(sink, 'emit').mockImplementationOnce(() => {
+        if (failure === 'throw') {
+          throw new Error('private stdout failure detail');
+        }
+        return { accepted: false, reason: failure };
+      });
+
+      try {
+        const response = await request(app.getHttpServer()).post('/demo/auth/login').send({ username, password });
+        expect(response.status).toBe(503);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.body).toEqual({ authenticated: false, message: 'Audit emission unavailable' });
+        expect(events).toHaveLength(0);
+        expect(logger.info).not.toHaveBeenCalled();
+      } finally {
+        unavailable.mockRestore();
+      }
+    },
+  );
 
   it.each([
     [{}, 'MISSING_CREDENTIALS'],
@@ -157,5 +185,18 @@ describe('opt-in demo credential check over HTTP', () => {
     expect(events[0]?.unmapped.platform).toMatchObject({ route: '/graphql', auth_boundary: 'graphql' });
     expect(events[0]?.user).toEqual({ name: 'unknown', type_id: 0 });
     expect(JSON.stringify(events)).not.toContain('private-malformed-token');
+  });
+
+  it('preserves the GraphQL 401 rejection even when local audit output is unavailable', async () => {
+    const unavailable = vi.spyOn(sink, 'emit').mockReturnValueOnce({ accepted: false, reason: 'buffer_full' });
+    try {
+      const response = await request(jwtApp.getHttpServer()).post('/graphql').send({ query: '{ me { userId } }' });
+      expect(response.status).toBe(401);
+      expect(response.body).toEqual({ statusCode: 401, message: 'Unauthenticated' });
+      expect(events).toHaveLength(0);
+      expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', { audit_event_id: anyString });
+    } finally {
+      unavailable.mockRestore();
+    }
   });
 });

@@ -28,7 +28,7 @@ describe('stdout audit adapter', () => {
     const sink = new StdoutAuditEventSink(output, failures);
     const input = event();
 
-    sink.emit(input);
+    expect(sink.emit(input)).toEqual({ accepted: true });
 
     const line: unknown = output.read();
     expect(Buffer.isBuffer(line)).toBe(true);
@@ -40,7 +40,7 @@ describe('stdout audit adapter', () => {
   it('does not retry a line that the stream accepted into its buffer', () => {
     const write = vi.fn<() => boolean>(() => false);
     const sink = new StdoutAuditEventSink({ write, writableLength: 0 }, vi.fn<(reason: string) => void>());
-    sink.emit(event());
+    expect(sink.emit(event())).toEqual({ accepted: true });
     expect(write).toHaveBeenCalledOnce();
   });
 
@@ -49,7 +49,7 @@ describe('stdout audit adapter', () => {
     const failures = vi.fn<(reason: string) => void>();
     const sink = new StdoutAuditEventSink({ write, writableLength: 262_144 }, failures);
 
-    sink.emit(event());
+    expect(sink.emit(event())).toEqual({ accepted: false, reason: 'buffer_full' });
 
     expect(write).not.toHaveBeenCalled();
     expect(failures).toHaveBeenCalledWith('buffer_full');
@@ -67,7 +67,28 @@ describe('stdout audit adapter', () => {
       failures,
     );
 
-    expect(() => sink.emit(event())).not.toThrow();
+    expect(sink.emit(event())).toEqual({ accepted: false, reason: 'write_failed' });
     expect(failures).toHaveBeenCalledWith('write_failed');
+  });
+
+  it('reports a later write callback failure without changing earlier local acceptance', async () => {
+    const failures = vi.fn<(reason: string) => void>();
+    const sink = new StdoutAuditEventSink(
+      {
+        writableLength: 0,
+        write(_line: unknown, encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void)) {
+          if (typeof encodingOrCallback === 'function') {
+            setImmediate(() => encodingOrCallback(new Error('private transport detail')));
+          }
+          return true;
+        },
+      },
+      failures,
+    );
+
+    expect(sink.emit(event())).toEqual({ accepted: true });
+    expect(failures).not.toHaveBeenCalled();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(failures).toHaveBeenCalledExactlyOnceWith('write_failed');
   });
 });

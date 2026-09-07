@@ -71,7 +71,13 @@ or untrusted input into audit reason fields.
 Audit emission is independent of operational log level and trace sampling. A
 successful stdout write is not a Firehose or S3 acknowledgement. Bound local
 buffering and report local write/drop failures without exposing the event body.
-Authentication must stay rejected if audit writing fails. Routing retry/buffering,
+The stdout adapter returns explicit local acceptance; a known full buffer or
+synchronous write failure makes the demo return a redacted 503, including when
+credentials matched. GraphQL rejection remains 401 if audit output fails. A write
+callback can report an error after the response; that remains a logged delivery
+failure, not a retroactive HTTP result. Annotate the actual span with sanitized
+event/request/action/AWS IDs, and send demo results with `Cache-Control: no-store`.
+Routing retry/buffering,
 retention and recovery are infrastructure responsibilities.
 
 ## Implementation order
@@ -121,11 +127,11 @@ remove the route; existing archived records need no migration.
 - [x] Contract, HTTP and trace-export tests pass
 - [x] Diff reviewed; unrelated guidance files excluded
 
-Verification: 113 unit tests and the 15 demo HTTP tests pass. A real-process
-integration test also proves that the audit record's span reaches a local OTLP
-collector. Typecheck, lint and build pass. The root workspace's existing local
-hybrid-teaching guidance files fail formatting; they are not part of this change.
-Run the complete check again from a clean checkout before merge.
+Verification covers 116 unit tests and 19 demo HTTP cases, including local output
+failure returning 503 and unchanged GraphQL rejection. A real-process integration
+test proves that the event's span reaches a local OTLP collector with the matching
+audit, request, action and AWS attributes. Run `npm run ci` from a clean checkout
+for formatting, lint, typechecks, automation, integration, database e2e and build.
 
 ## Handoff
 

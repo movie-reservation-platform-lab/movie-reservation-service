@@ -3,19 +3,23 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { AuthenticationAuditEvent } from '../../../src/application/audit/authentication-audit-event';
+import { AuditEmissionUnavailableError } from '../../../src/application/audit/audit-emission-unavailable-error';
+import type { AuditLocalAcceptance } from '../../../src/application/audit/ports/audit-event-sink';
 import { RequestAuthenticationAuditRecorder } from '../../../src/infrastructure/audit/request-authentication-audit-recorder';
 import { runWithRequestContext } from '../../../src/infrastructure/observability/request-context';
 import type { ApplicationLogger } from '../../../src/infrastructure/observability/application-logger';
 
 const traceId = '6a9dd2710123456789abcdef01234567';
 const spanId = '0123456789abcdef';
+const anyString: unknown = expect.any(String);
 
 function createRecorder() {
   const events: AuthenticationAuditEvent[] = [];
   const logger = { info: vi.fn<ApplicationLogger['info']>(), error: vi.fn<ApplicationLogger['error']>() };
   const sink = {
-    emit(event: AuthenticationAuditEvent) {
+    emit(event: AuthenticationAuditEvent): AuditLocalAcceptance {
       events.push(event);
+      return { accepted: true };
     },
   };
   const recorder = new RequestAuthenticationAuditRecorder(
@@ -138,15 +142,26 @@ describe('request-aware audit recorder', () => {
     expect(new Set(events.map((event) => event.metadata.uid)).size).toBe(3);
   });
 
-  it('retains a failure response receipt and reports an emission failure without the event body', () => {
+  it('reports an emission exception without returning a receipt or logging the event body', () => {
     const { recorder, sink, logger } = createRecorder();
     vi.spyOn(sink, 'emit').mockImplementation(() => {
       throw new Error('output unavailable');
     });
 
-    const receipt = recorder.record(attempt);
-
-    expect(receipt.audit_event_id).toEqual(expect.any(String));
-    expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', { audit_event_id: receipt.audit_event_id });
+    expect(() => recorder.record(attempt)).toThrow(AuditEmissionUnavailableError);
+    expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', { audit_event_id: anyString });
+    expect(logger.info).not.toHaveBeenCalled();
   });
+
+  it.each(['buffer_full', 'write_failed'] as const)(
+    'does not return a receipt when the local sink reports %s',
+    (reason) => {
+      const { recorder, sink, logger } = createRecorder();
+      vi.spyOn(sink, 'emit').mockReturnValue({ accepted: false, reason });
+
+      expect(() => recorder.record(attempt)).toThrow(AuditEmissionUnavailableError);
+      expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', { audit_event_id: anyString });
+      expect(logger.info).not.toHaveBeenCalled();
+    },
+  );
 });

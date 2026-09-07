@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { trace } from '@opentelemetry/api';
 
+import { AuditEmissionUnavailableError } from '../../application/audit/audit-emission-unavailable-error';
 import {
   buildAuthenticationAuditEvent,
   type AuthenticationAuditAttempt,
@@ -29,7 +30,8 @@ export class RequestAuthenticationAuditRecorder implements AuthenticationAuditRe
 
   record(attempt: AuthenticationAuditAttempt): AuditReceipt {
     const requestContext = getCurrentRequestContext();
-    const spanContext = trace.getActiveSpan()?.spanContext();
+    const span = trace.getActiveSpan();
+    const spanContext = span?.spanContext();
     const activeSpan = spanContext !== undefined && trace.isSpanContextValid(spanContext) ? spanContext : undefined;
     const event = buildAuthenticationAuditEvent({
       ...attempt,
@@ -44,13 +46,25 @@ export class RequestAuthenticationAuditRecorder implements AuthenticationAuditRe
         ? {}
         : { awsCloudfrontRequestId: requestContext.awsCloudfrontRequestId }),
     });
-    try {
-      this.sink.emit(event);
-    } catch {
-      // A transport failure must not turn a rejected authentication into a success.
-      this.logger.error('audit.emit.failed', { audit_event_id: event.metadata.uid });
-    }
     const platform = event.unmapped.platform;
+    span?.setAttributes({
+      'audit.event_id': event.metadata.uid,
+      'audit.outcome': event.status_detail,
+      'app.request_id': platform.request_id,
+      'app.correlation_id': event.metadata.correlation_uid,
+      ...(platform.aws_alb_trace_id === undefined ? {} : { 'aws.alb.trace_id': platform.aws_alb_trace_id }),
+      ...(platform.aws_cloudfront_request_id === undefined
+        ? {}
+        : { 'aws.cloudfront.request_id': platform.aws_cloudfront_request_id }),
+    });
+    try {
+      if (!this.sink.emit(event).accepted) {
+        throw new AuditEmissionUnavailableError();
+      }
+    } catch {
+      this.logger.error('audit.emit.failed', { audit_event_id: event.metadata.uid });
+      throw new AuditEmissionUnavailableError();
+    }
     this.logger.info('audit.authentication', {
       audit_event_id: event.metadata.uid,
       correlation_id: event.metadata.correlation_uid,

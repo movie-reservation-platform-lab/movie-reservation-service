@@ -65,6 +65,10 @@ event ID. Correct credentials return 200, `authenticated: true`, and a success
 audit event. Prefer the browser demo form for that check so the configured
 password does not end up in shell history.
 
+Responses use `Cache-Control: no-store`. If the process cannot accept the audit
+line locally, the check returns 503 with `authenticated: false`, even when the
+credentials matched. This is an unavailable audit output, not a wrong password.
+
 Unset the flag or set `DEMO_AUTH_ENABLED=false` and restart to remove the route
 (404). Enabled mode refuses to start without nonblank credentials, and is refused
 entirely when `NODE_ENV` is `staging` or `production`. `DEPLOYMENT_ENVIRONMENT`
@@ -85,6 +89,10 @@ Use `metadata.uid` in Athena to select the audit event, then its trace ID in the
 trace backend. The ALB header can join to the load balancer's access record when
 access logging is enabled. Keep it as a separate field: the ALB identifier is not
 necessarily the OpenTelemetry trace identifier.
+
+The active span also carries `audit.event_id`, `audit.outcome`, `app.request_id`,
+`app.correlation_id`, and present `aws.alb.trace_id` / `aws.cloudfront.request_id`
+attributes. Search by these fields to move from an audit event to its actual span.
 
 The emitter reads the **active** OpenTelemetry span, including valid unsampled
 contexts. It does not invent one from an incoming `traceparent`. An unsampled or
@@ -119,6 +127,10 @@ buffers and retries outside the application; process/task loss can still lose
 records. The application bounds pending stdout bytes at 256 KiB and reports
 `audit.stdout.failed` if it cannot accept another record or a write fails.
 The returned event ID identifies the generated event, not proof of archival.
+Known local failures produce demo HTTP 503; existing GraphQL authentication
+rejections stay 401. A callback can report a write error after a response was
+sent, so even local acceptance cannot guarantee delivery. Node's `write(false)`
+means that the line was buffered, not rejected; the adapter does not retry it.
 
 Malformed credential objects get the same generic 401 as wrong credentials.
 Syntactically invalid JSON is rejected before the credential check and does not

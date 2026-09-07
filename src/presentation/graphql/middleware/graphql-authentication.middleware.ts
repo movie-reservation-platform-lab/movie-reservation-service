@@ -2,6 +2,7 @@ import { Inject, Injectable, type NestMiddleware } from '@nestjs/common';
 
 import { createActorContext } from '../../../application/authentication/actor-context';
 import { AuthenticationService } from '../../../application/authentication/authentication.service';
+import { AuditEmissionUnavailableError } from '../../../application/audit/audit-emission-unavailable-error';
 import type { AuthenticationAuditRecorder } from '../../../application/audit/ports/authentication-audit-recorder';
 import { AUTHENTICATION_AUDIT_RECORDER } from '../../../di/audit/audit.tokens';
 import { config } from '../../../config';
@@ -55,11 +56,18 @@ export class GraphqlAuthenticationMiddleware implements NestMiddleware {
       next();
     } catch (error) {
       if (error instanceof AuthenticationError) {
-        this.audit.record({
-          outcome: { authenticated: false, reason: 'UNAUTHENTICATED' },
-          route: '/graphql',
-          authBoundary: 'graphql',
-        });
+        try {
+          this.audit.record({
+            outcome: { authenticated: false, reason: 'UNAUTHENTICATED' },
+            route: '/graphql',
+            authBoundary: 'graphql',
+          });
+        } catch (auditError) {
+          // The recorder reports local failure; an unavailable sink must not change this rejection.
+          if (!(auditError instanceof AuditEmissionUnavailableError)) {
+            throw auditError;
+          }
+        }
         res.status(401).json({
           statusCode: 401,
           message: 'Unauthenticated',
