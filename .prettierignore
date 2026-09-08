@@ -8,3 +8,6 @@ schema.gql
 .cursor/
 .gemini/
 .roo/
+
+# Shared contract fixtures are copied verbatim across the platform repositories.
+test/fixtures/audit/*.json
