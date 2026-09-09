@@ -9,6 +9,7 @@ import {
 } from '../../di/movie-reservations/movie-reservations-composition.module';
 import { GraphqlAuthenticationMiddleware } from './middleware/graphql-authentication.middleware';
 import { MovieReservationsResolver } from './movie-reservations.resolver';
+import { ScreeningAvailabilityResolver } from './screening-availability.resolver';
 
 /**
  * Presentation module for the movie reservation GraphQL API.
@@ -26,6 +27,7 @@ export class MovieReservationsGraphqlModule implements NestModule {
         { provide: AUTHENTICATION_AUDIT_RECORDER, useValue: audit },
         GraphqlAuthenticationMiddleware,
         MovieReservationsResolver,
+        ScreeningAvailabilityResolver,
       ],
     };
   }

@@ -1,6 +1,8 @@
 import { type DynamicModule, Module, type Provider } from '@nestjs/common';
 
 import { AuthenticationService } from '../../application/authentication/authentication.service';
+import { ScreeningAvailabilityService } from '../../application/movie-reservations/screening-availability.service';
+import { createScreeningAvailabilityProviders } from './screening-availability.providers';
 import { AuthorizationService } from '../../application/authorization/authorization.service';
 import { MovieReservationsService } from '../../application/movie-reservations/movie-reservations.service';
 import {
@@ -64,6 +66,7 @@ function createProviders(options: MovieReservationsCompositionOptions): Provider
   return [
     ...createAuthenticationProviders(options.authMode),
     ...createPersistenceProviders(persistenceMode),
+    ...createScreeningAvailabilityProviders(persistenceMode),
     ...createReservationProcessingFailurePolicyProviders(reservationFailureInjection),
     ...createMovieReservationUseCaseProviders(),
     ...createReservationWorkerProviders(reservationWorkerMode),
@@ -73,6 +76,7 @@ function createProviders(options: MovieReservationsCompositionOptions): Provider
 function createExports(persistenceMode: PersistenceMode) {
   return [
     AuthenticationService,
+    ScreeningAvailabilityService,
     AuthorizationService,
     CLOCK,
     ...createPersistenceExports(persistenceMode),

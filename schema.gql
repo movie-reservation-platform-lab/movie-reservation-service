@@ -91,6 +91,11 @@ type Query {
   ): Reservation
 
   """
+  Confirmed occupancy for one provider-owned screening. Null means missing or inaccessible. Pending requests are not holds.
+  """
+  screeningAvailability(screeningId: ID!): ScreeningAvailability
+
+  """
   Lists scheduled screenings, optionally filtered to one movie. The nested seats are the auditorium seats for the screening, not a dedicated availability calculation.
   """
   screenings(
@@ -204,6 +209,17 @@ type Screening {
 
   """ISO 8601 UTC timestamp when the screening starts."""
   startsAt: String!
+}
+
+type ScreeningAvailability {
+  screeningId: ID!
+  seats: [ScreeningSeatAvailability!]!
+}
+
+type ScreeningSeatAvailability {
+  """Snapshot only; request processing remains authoritative for conflicts."""
+  available: Boolean!
+  seatId: ID!
 }
 
 """Seat position inside an auditorium."""

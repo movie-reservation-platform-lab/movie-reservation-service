@@ -58,6 +58,25 @@ for FireLens routing. It leaves the existing reservation demo's authentication
 unchanged. See [the demo guide](docs/audit-authentication-demo.md) for setup,
 request examples, correlation fields and delivery limits.
 
+## Screening Availability
+
+The additive `screeningAvailability(screeningId: ID!)` GraphQL query returns
+`screeningId` and `seats { seatId available }`. Existing catalog/Seat fields are
+unchanged. It uses the authenticated actor's provider scope; unknown or foreign
+screenings return `null`, and no reservation owner information is disclosed.
+
+Only confirmed reservations occupy seats. Pending requests are not holds, and a
+snapshot cannot guarantee a later booking: existing transactional conflict
+checks remain authoritative. The reader supports both in-memory and PostgreSQL
+profiles without a migration. In-memory bookings survive browser reload, not API
+restart, task replacement or multiple independent replicas.
+
+Deploy this API before the frontend availability consumer. See
+[the contract and implementation plan](docs/plans/issue-36-screening-availability.md).
+The demo credential-check endpoint still does not issue a security session or
+change the reservation API's configured actor; a frontend demo gate cannot
+replace backend authentication.
+
 ## Container Image
 
 ```sh

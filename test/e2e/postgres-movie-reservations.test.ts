@@ -4,6 +4,7 @@ import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import knexFactory, { type Knex } from 'knex';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { ReservationRequestAlreadyExistsError } from '../../src/application/movie-reservations/errors/reservation-request-already-exists-error';
 import type { MovieReservationRepository } from '../../src/application/movie-reservations/ports/movie-reservation-repository';
@@ -152,6 +153,42 @@ describe('Postgres-backed movie reservation workflow', () => {
     await expect(repository.saveReservationRequest(duplicateReservationRequest)).rejects.toThrow(
       `Reservation request ${MOVIE_RESERVATION_DEMO_IDS.reservationRequests.auroraAda} already exists`,
     );
+  });
+
+  it('reads PostgreSQL occupancy after confirmation without exposing foreign screenings', async () => {
+    const read = async (screeningId: string) => {
+      const response = await request(app.getHttpServer())
+        .post('/graphql')
+        .send({
+          query:
+            'query($id: ID!) { screeningAvailability(screeningId: $id) { screeningId seats { seatId available } } }',
+          variables: { id: screeningId },
+        });
+      expect(response.status).toBe(200);
+      expect(response.body.errors).toBeUndefined();
+      return z
+        .object({
+          data: z.object({
+            screeningAvailability: z
+              .object({
+                screeningId: z.string(),
+                seats: z.array(z.object({ seatId: z.string(), available: z.boolean() })),
+              })
+              .nullable(),
+          }),
+        })
+        .parse(response.body).data.screeningAvailability;
+    };
+    const screeningId = MOVIE_RESERVATION_DEMO_IDS.screenings.auroraTypeSafeMatineeMorning;
+    const seatId = MOVIE_RESERVATION_DEMO_IDS.seats.auroraA3;
+    expect((await read(screeningId))?.seats).toContainEqual({ seatId, available: true });
+    await requestReservation([seatId]);
+    expect((await read(screeningId))?.seats).toContainEqual({ seatId, available: true });
+    const processor = app.get<ReservationRequestProcessor>(RESERVATION_REQUEST_PROCESSOR);
+    await expect(processor.processNextPendingRequest()).resolves.toMatchObject({ outcome: 'confirmed' });
+    expect((await read(screeningId))?.seats).toContainEqual({ seatId, available: false });
+    expect(await read(MOVIE_RESERVATION_DEMO_IDS.screenings.rivertonLastDeploymentMorning)).toBeNull();
+    expect(await read('99999999-9999-4999-8999-999999999999')).toBeNull();
   });
 
   /**
