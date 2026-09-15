@@ -120,20 +120,15 @@ describe('repository and CI automation contract', () => {
     const allowedExternalActionReferences = [
       'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803',
       'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38',
-      'aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25',
+      'movie-reservation-platform-lab/movie-platform-actions/actions/prepare-container-candidate@388507380ae9bc2b1ac91282ff16f40d4c65fcfc',
+      'movie-reservation-platform-lab/movie-platform-actions/actions/container-evidence@388507380ae9bc2b1ac91282ff16f40d4c65fcfc',
       'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
       'docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f',
       'docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9',
       'docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8',
       'actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a',
     ] as const;
-    const allowedLocalActionReferences = [
-      './.github/actions/evaluate-container-vulnerabilities',
-      './.github/actions/prepare-container-candidate',
-      './.github/actions/verify-container-provenance',
-      './.github/actions/evaluate-container-vulnerabilities',
-      './.github/actions/record-container-candidate',
-    ] as const;
+    const allowedLocalActionReferences: readonly string[] = [];
     const localActionReferences = actionReferences.filter((reference) => reference.startsWith('./'));
     const externalActionReferences = actionReferences.filter((reference) => !reference.startsWith('./'));
 
@@ -158,7 +153,7 @@ describe('repository and CI automation contract', () => {
     expect(workflow).toContain('run: npm run typecheck:automation');
     expect(workflow).toContain('run: npm run test:automation');
     expect(workflow).toContain('run: npm run build');
-    expect(workflow).toContain('run: npm run docker:build');
+    expect(workflow).toContain('docker build --platform linux/amd64 --target runtime');
     expect(workflow).toMatch(/^permissions:\s*\n\s+contents: read$/m);
     expect(workflow).not.toContain('pull_request_target:');
     expect(workflow).not.toMatch(/run:\s+npm run (?:check|ci|test:e2e)\b/);
@@ -180,7 +175,7 @@ describe('repository and CI automation contract', () => {
     expect(automationJob).not.toContain('run: npm run test:integration');
 
     const containerSecurityJob = readWorkflowJob(workflow, 'container-security-check');
-    expect(containerSecurityJob).toContain('DOCKER_DEFAULT_PLATFORM: linux/amd64');
+    expect(containerSecurityJob).toContain('--platform linux/amd64');
     expect(containerSecurityJob).toContain("github.event_name != 'push'");
     expect(containerSecurityJob).toContain("github.ref != 'refs/heads/main'");
     expect(containerSecurityJob).toContain(
@@ -195,44 +190,22 @@ describe('repository and CI automation contract', () => {
     }
   });
 
-  it('scans the local PR image and retains complete JSON evidence', () => {
+  it('uses the same immutable shared policy tooling for PRs and canonical publication', () => {
     const workflow = readTextFile('.github/workflows/ci.yml');
-    const containerSecurityJob = readWorkflowJob(workflow, 'container-security-check');
-    const localImage = 'movie-reservation-service:local';
-    const reportPath = 'security-evidence/reservation-service-vulnerabilities.json';
-
-    expect(containerSecurityJob).toContain('run: npm run docker:build');
-    expect(containerSecurityJob).toContain('uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25');
-    expect(containerSecurityJob).toContain('scan-type: image');
-    expect(containerSecurityJob).toContain(`image-ref: ${localImage}`);
-    expect(containerSecurityJob).toContain('scanners: vuln');
-    expect(containerSecurityJob).toContain('vuln-type: os,library');
-    expect(containerSecurityJob).toContain('format: json');
-    expect(containerSecurityJob).toContain(`output: ${reportPath}`);
-    expect(containerSecurityJob).toContain('severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL');
-    expect(containerSecurityJob).toContain('ignore-unfixed: false');
-    expect(containerSecurityJob).toContain("exit-code: '0'");
-    expect(containerSecurityJob).toContain('timeout: 5m');
-    expect(containerSecurityJob).toContain('uses: ./.github/actions/evaluate-container-vulnerabilities');
-    expect(containerSecurityJob).toContain(`report-path: ${reportPath}`);
-    expect(containerSecurityJob).toContain(`expected-image: ${localImage}`);
-    expect(containerSecurityJob).toContain('subject-kind: local');
-    expect(containerSecurityJob).toContain('uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a');
-    expect(containerSecurityJob).toContain('if: ${{ !cancelled() }}');
-    expect(containerSecurityJob).toContain(`path: ${reportPath}`);
-    expect(containerSecurityJob).toContain('if-no-files-found: error');
-    expect(containerSecurityJob).toContain('retention-days: 14');
-    expect(containerSecurityJob).not.toMatch(/cyclonedx|sbom/i);
-
-    const buildIndex = containerSecurityJob.indexOf('run: npm run docker:build');
-    const scanIndex = containerSecurityJob.indexOf('uses: aquasecurity/trivy-action@');
-    const evaluationIndex = containerSecurityJob.indexOf('uses: ./.github/actions/evaluate-container-vulnerabilities');
-    const uploadIndex = containerSecurityJob.indexOf('uses: actions/upload-artifact@');
-
-    expect(buildIndex).toBeGreaterThanOrEqual(0);
-    expect(scanIndex).toBeGreaterThan(buildIndex);
-    expect(evaluationIndex).toBeGreaterThan(scanIndex);
-    expect(uploadIndex).toBeGreaterThan(evaluationIndex);
+    const security = readWorkflowJob(workflow, 'container-security-check');
+    const pin = '388507380ae9bc2b1ac91282ff16f40d4c65fcfc';
+    expect(security).toContain(`ref: ${pin}`);
+    expect(security).toContain('persist-credentials: false');
+    expect(security).toContain('node .platform-actions/local-tools/container-security/lib/scan.mjs');
+    expect(security).toContain('--evidence-version v1alpha3 --component reservation-service');
+    expect(security).toContain('GH_TOKEN: ${{ github.token }}');
+    expect(security).toContain('--target runtime --tag movie-reservation-service:local');
+    expect(security).toContain('if: ${{ !cancelled() }}');
+    expect(security).toContain('path: ${{ runner.temp }}/reservation-service-pr-security/');
+    expect(security).toContain('retention-days: 14');
+    expect(security.indexOf('docker build')).toBeLessThan(security.indexOf('node .platform-actions'));
+    expect(security.indexOf('node .platform-actions')).toBeLessThan(security.indexOf('uses: actions/upload-artifact'));
+    expect(workflow).not.toContain('uses: ./.github/actions/');
   });
 
   it('publishes and attests candidates only for the canonical main branch', () => {
@@ -261,15 +234,6 @@ describe('repository and CI automation contract', () => {
     expect(publisher).toContain('persist-credentials: false');
     expect(publisher).toContain('uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9');
     expect(publisher).toContain('uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8');
-    expect(publisher).toContain('uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a');
-    expect(publisher).toContain('uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25');
-    expect(publisher).toContain('uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a');
-    expect(publisher).toContain('uses: ./.github/actions/prepare-container-candidate');
-    expect(publisher).toContain('uses: ./.github/actions/verify-container-provenance');
-    expect(publisher).toContain('uses: ./.github/actions/evaluate-container-vulnerabilities');
-    expect(publisher).toContain('uses: ./.github/actions/record-container-candidate');
-    expect(publisher).toContain('expected-repository: movie-reservation-platform-lab/movie-reservation-service');
-    expect(publisher).toContain('expected-ref: refs/heads/main');
     const buildPushStart = publisher.indexOf('uses: docker/build-push-action@');
     const buildPushEnd = publisher.indexOf('\n      - name:', buildPushStart);
     const buildPushStep = publisher.slice(buildPushStart, buildPushEnd);
@@ -280,99 +244,28 @@ describe('repository and CI automation contract', () => {
     expect(publisher).toContain('org.opencontainers.image.source=');
     expect(publisher).toContain('org.opencontainers.image.revision=');
     expect(publisher).toContain('org.opencontainers.image.version=');
-    expect(publisher).toContain('subject-digest: ${{ steps.publish.outputs.digest }}');
-    expect(publisher).toContain('push-to-registry: false');
     expect(publisher).not.toContain('push-to-registry: true');
-    expect(publisher).toContain('bundle-path: ${{ steps.provenance.outputs.bundle-path }}');
     expect(publisher).toContain('github-token: ${{ github.token }}');
-    expect(publisher).toContain('candidate-digest: ${{ steps.publish.outputs.digest }}');
-    expect(publisher).toContain('source-revision: ${{ github.sha }}');
     expect(publisher).toContain('node-version-file: .nvmrc');
     expect(publisher).not.toMatch(/^\s+run:\s+npm\b/m);
     expect(publisher).not.toMatch(/^\s+run:\s+\|/m);
   });
 
-  it('records exact-digest security evidence before making the candidate eligible', () => {
-    const workflow = readTextFile('.github/workflows/ci.yml');
-    const publisher = readWorkflowJob(workflow, 'publish-candidate');
-    const immutableCandidate = '${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}';
-    const trivyAction = 'uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25';
-    const uploadAction = 'uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
-    const evaluatorAction = 'uses: ./.github/actions/evaluate-container-vulnerabilities';
-    const handoffValidationAction = 'uses: ./.github/actions/record-container-candidate';
-
-    expect(publisher.match(new RegExp(escapeRegExp(trivyAction), 'g'))).toHaveLength(2);
-    expect(publisher.match(new RegExp(escapeRegExp(`image-ref: ${immutableCandidate}`), 'g'))).toHaveLength(2);
-    expect(publisher.match(/scanners: vuln/g)).toHaveLength(2);
-    expect(publisher.match(/vuln-type: os,library/g)).toHaveLength(2);
-    expect(publisher.match(/ignore-unfixed: false/g)).toHaveLength(2);
-    expect(publisher.match(/exit-code: '0'/g)).toHaveLength(2);
-    expect(publisher.match(/timeout: 5m/g)).toHaveLength(2);
-    expect(publisher).toContain('format: cyclonedx');
-    expect(publisher).toContain('list-all-pkgs: true');
-    expect(publisher).toContain('output: security-evidence/reservation-service.cdx.json');
-    expect(publisher).toContain('format: json');
-    expect(publisher).toContain('severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL');
-    expect(publisher).toContain('output: security-evidence/reservation-service-vulnerabilities.json');
-    expect(publisher).toContain('version: v0.70.0');
-    expect(publisher).toContain('skip-setup-trivy: true');
-    expect(publisher).toContain('cache: false');
-    expect(publisher).toContain(`expected-image: ${immutableCandidate}`);
-    expect(publisher).toContain('subject-kind: immutable-ghcr');
-    expect(publisher).toContain(
-      'reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
-    );
-    expect(publisher).toContain('run: node automation/candidate-evidence/src/emit.mjs');
-    expect(publisher).toContain('ATTESTATION_ID: ${{ steps.provenance.outputs.attestation-id }}');
-    expect(publisher).toContain('ATTESTATION_URL: ${{ steps.provenance.outputs.attestation-url }}');
-    expect(publisher).toContain('security-evidence/component-candidate-evidence-v1alpha1.json');
-    expect(publisher).toContain('security-evidence/reservation-service-provenance.json');
-    expect(
-      publisher.match(/uses: actions\/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a/g),
-    ).toHaveLength(2);
-    expect(publisher).toContain('subject-path: |');
-    expect(publisher).toContain('evidence-contract-path: security-evidence/component-candidate-evidence-v1alpha1.json');
-    expect(publisher).toContain('evidence-attestation-url: ${{ steps.evidence-provenance.outputs.attestation-url }}');
-    expect(publisher).toContain('id: handoff');
-    expect(publisher).toContain('name: ${{ steps.handoff.outputs.evidence_artifact_name }}');
-    expect(publisher).toContain('${{ steps.handoff.outputs.evidence_contract_path }}');
-    expect(publisher).toMatch(
-      /- name: Upload candidate security evidence\s+uses: actions\/upload-artifact@[0-9a-f]{40}/,
-    );
-    expect(publisher).not.toMatch(/- name: Upload candidate security evidence\s+if:/);
-    expect(publisher).toContain('if: ${{ failure() && !cancelled() }}');
-    expect(publisher).toContain(
-      'reservation-service-rejected-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
-    );
-    expect(publisher).toContain('if-no-files-found: error');
-    expect(publisher).toContain('if-no-files-found: warn');
-    expect(publisher).toContain('retention-days: 14');
-
-    const rejectedUpload = publisher.slice(publisher.indexOf('- name: Upload rejected candidate diagnostics'));
-    expect(rejectedUpload).toContain('security-evidence/reservation-service.cdx.json');
-    expect(rejectedUpload).toContain('security-evidence/reservation-service-vulnerabilities.json');
-    expect(rejectedUpload).not.toContain('security-evidence/component-candidate-evidence-v1alpha1.json');
-    expect(rejectedUpload).not.toContain('security-evidence/reservation-service-provenance.json');
-
-    const publishPosition = publisher.indexOf('uses: docker/build-push-action@');
-    const attestationPosition = publisher.indexOf('uses: actions/attest-build-provenance@');
-    const provenanceVerificationPosition = publisher.indexOf('uses: ./.github/actions/verify-container-provenance');
-    const firstScanPosition = publisher.indexOf(trivyAction);
-    const evaluationPosition = publisher.indexOf(evaluatorAction);
-    const emissionPosition = publisher.indexOf('run: node automation/candidate-evidence/src/emit.mjs');
-    const evidenceAttestationPosition = publisher.lastIndexOf('uses: actions/attest-build-provenance@');
-    const uploadPosition = publisher.indexOf(uploadAction);
-    const handoffValidationPosition = publisher.indexOf(handoffValidationAction);
-
-    expect(publishPosition).toBeGreaterThanOrEqual(0);
-    expect(attestationPosition).toBeGreaterThan(publishPosition);
-    expect(provenanceVerificationPosition).toBeGreaterThan(attestationPosition);
-    expect(firstScanPosition).toBeGreaterThan(provenanceVerificationPosition);
-    expect(evaluationPosition).toBeGreaterThan(firstScanPosition);
-    expect(emissionPosition).toBeGreaterThan(evaluationPosition);
-    expect(evidenceAttestationPosition).toBeGreaterThan(emissionPosition);
-    expect(handoffValidationPosition).toBeGreaterThan(evidenceAttestationPosition);
-    expect(uploadPosition).toBeGreaterThan(handoffValidationPosition);
+  it('binds v3 evidence to the published digest with authenticated preparation', () => {
+    const publisher = readWorkflowJob(readTextFile('.github/workflows/ci.yml'), 'publish-candidate');
+    const shared = 'movie-reservation-platform-lab/movie-platform-actions/actions/';
+    const pin = '388507380ae9bc2b1ac91282ff16f40d4c65fcfc';
+    expect(publisher).toContain(`uses: ${shared}prepare-container-candidate@${pin}`);
+    expect(publisher).toContain(`uses: ${shared}container-evidence@${pin}`);
+    expect(publisher.match(/evidence-version: v1alpha3/g)).toHaveLength(1);
+    expect(publisher.match(/component: reservation-service/g)).toHaveLength(2);
+    expect(publisher.match(/github-token: \$\{\{ github.token \}\}/g)).toHaveLength(2);
+    expect(publisher).toContain('digest: ${{ steps.publish.outputs.digest }}');
+    expect(publisher).toContain('target: runtime');
+    expect(publisher.indexOf('prepare-container-candidate@')).toBeLessThan(publisher.indexOf('docker/login-action@'));
+    expect(publisher.indexOf('docker/build-push-action@')).toBeLessThan(publisher.indexOf('container-evidence@'));
+    expect(publisher).not.toContain('v1alpha1');
+    expect(publisher).not.toContain('automation/candidate-evidence');
   });
 
   it('exposes script-backed local actions through explicit workflow contracts', () => {
@@ -455,8 +348,4 @@ function readWorkflowJob(workflow: string, job: string): string {
   const nextJob = jobAndRemainder.search(/^ {2}[a-z][a-z0-9-]*:\s*$/m);
 
   return nextJob === -1 ? jobAndRemainder : jobAndRemainder.slice(0, nextJob);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

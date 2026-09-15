@@ -92,23 +92,25 @@ separate normal Debian debug target with shell and npm access. See
 
 ## Hosted CI
 
-Pull requests, manual workflow runs, and fork activity use five stable,
+Pull requests, manual workflow runs, and fork activity use six stable,
 non-publishing checks without repository, package, or deployment write
 authority:
 
 - `service-quality` runs formatting, linting, and typechecking;
+- `automation-quality` checks repository automation and caller contracts;
 - `service-unit-tests` runs unit tests;
 - `service-integration-tests` runs integration tests;
 - `service-build` compiles the service;
 - `container-security-check` starts after quality, builds the
   baseline-compatible `linux/amd64` image, and scans its OS and library
-  packages with Trivy. CRITICAL findings fail the job; HIGH findings remain
-  visible and non-blocking. The complete JSON report is retained for 14 days.
+  packages with shared Trivy tooling and current, reviewed exemption policy.
+  Unapproved CRITICAL findings fail; HIGH findings remain visible. Complete
+  diagnostics are retained for 14 days. Policy lookup errors fail closed.
 
 Reproduce that container gate locally before opening or updating a pull request
 with `npm run container:security-check`. It builds the production image, runs a
 digest-pinned Dockerized Trivy scanner, writes the complete JSON report, and
-applies the same CRITICAL-only evaluator. See
+applies the same governed v3 policy (authenticated policy access is required). See
 [DEVELOPMENT.md](DEVELOPMENT.md#reproduce-the-container-security-gate-locally)
 for prerequisites, caching, outputs, and the Docker-socket trust boundary.
 
@@ -117,23 +119,24 @@ Hosted jobs call the focused npm scripts directly. `npm run check` and
 canonical repository runs the same four service gates, then replaces the local
 image check with `publish-candidate`. That job alone can publish and attest a
 `linux/amd64` image in GHCR. It scans the exact published digest, retains a
-CycloneDX SBOM and complete vulnerability JSON for 14 days, and rejects every
-CRITICAL finding before recording the candidate handoff. HIGH findings remain
-visible and non-blocking under the provisional policy. The Docker-dependent
+CycloneDX SBOM and complete vulnerability JSON for 14 days, and rejects unapproved
+CRITICAL findings before recording the v1alpha3 handoff. HIGH findings remain
+visible; environments independently evaluates the original verified report
+against current policy before admission. The Docker-dependent
 Postgres e2e suite is not yet hosted; it will be added later as its own visible
 job.
 
-Container vulnerability evaluation, candidate preparation, and handoff
-recording use tested repo-local composite actions, leaving the workflow focused
-on orchestration and explicit permissions. These local actions are the
-migration seam for the planned
-[organization CI building blocks](https://github.com/movie-reservation-platform-lab/.github/issues/5).
+Shared preparation and evidence actions plus local scan tooling use one immutable
+`movie-platform-actions` revision. Legacy local actions remain only for historical
+verification and explicit rollback, not the active workflow.
+See [the migration plan](docs/plans/issue-38-shared-evidence-v3.md) for dependency
+order and the explicit environments `governed-v3` admission route.
 
 ## Deployment Contract
 
 Application CI publishes one attempt-unique discovery tag for each successful,
 current `main` run and records the immutable GHCR digest plus GitHub-hosted build
-provenance and provisional security evidence. Retries use a new tag and never
+provenance and governed v1alpha3 security evidence. Retries use a new tag and never
 move an earlier tag. The digest, not the tag, is the candidate identity.
 
 `movie-platform-environments` validates and selects candidate digests for
