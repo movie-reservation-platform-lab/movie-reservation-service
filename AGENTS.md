@@ -113,6 +113,7 @@ Apply rules marked **always-on** throughout. Read other rule files from `.ai/rul
 Read the relevant skill file from `.ai/skills/` when the task matches its description.
 
 - **clean-architecture**: Use when designing or reviewing reservation-service domain, application, infrastructure, presentation, port, and dependency-injection boundaries. (read `.ai/skills/clean-architecture/SKILL.md`)
+- **hybrid-teaching-mode**: Use for learning-first implementation, refactoring, testing, or debugging when the engineer wants meaningful hands-on practice, graduated AI guidance, or relief from overreliance and coding fatigue without receiving a black-box solution. (read `.ai/skills/hybrid-teaching-mode/SKILL.md`)
 - **nestjs**: Use when implementing, refactoring, or explaining NestJS service code, including controllers, modules, providers, GraphQL resolvers, DTOs, validation, and tests; pair with clean-architecture for layer boundaries. (read `.ai/skills/nestjs/SKILL.md`)
 - **principal-engineer-planner**: Use before implementation to inspect the repository, clarify requirements, compare alternatives, identify risks, and produce an implementation-ready plan under docs/plans/. (read `.ai/skills/principal-engineer-planner/SKILL.md`)
 - **programming-kb**: Use only when the user explicitly asks to consult their private local programming knowledge base; repository evidence remains authoritative. (read `.ai/skills/programming-kb/SKILL.md`)
