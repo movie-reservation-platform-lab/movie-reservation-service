@@ -127,8 +127,9 @@ Postgres e2e suite is not yet hosted; it will be added later as its own visible
 job.
 
 Shared preparation and evidence actions plus local scan tooling use one immutable
-`movie-platform-actions` revision. Legacy local actions remain only for historical
-verification and explicit rollback, not the active workflow.
+`movie-platform-actions` revision. Retired local producer implementations have
+been removed; Git history retains them for reviewed rollback. The published v1
+schema remains an immutable historical contract, not an active producer path.
 See [the migration plan](docs/plans/issue-38-shared-evidence-v3.md) for dependency
 order and the explicit environments `governed-v3` admission route.
 
