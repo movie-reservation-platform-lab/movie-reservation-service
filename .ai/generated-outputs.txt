@@ -10,6 +10,11 @@
 .codex/skills/clean-architecture
 .claude/skills/clean-architecture
 .gemini/skills/clean-architecture
+.cursor/skills/hybrid-teaching-mode
+.roo/skills/hybrid-teaching-mode
+.codex/skills/hybrid-teaching-mode
+.claude/skills/hybrid-teaching-mode
+.gemini/skills/hybrid-teaching-mode
 .cursor/skills/nestjs
 .roo/skills/nestjs
 .codex/skills/nestjs

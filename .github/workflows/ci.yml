@@ -158,52 +158,40 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
 
-      - name: Build local container image
+      - name: Check out reviewed shared security tooling
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: movie-reservation-platform-lab/movie-platform-actions
+          ref: 388507380ae9bc2b1ac91282ff16f40d4c65fcfc
+          path: .platform-actions
+          persist-credentials: false
+
+      - name: Build production image for vulnerability check
+        run: docker build --platform linux/amd64 --target runtime --tag movie-reservation-service:local .
+
+      - name: Evaluate complete report with current approved policy
         env:
-          DOCKER_DEFAULT_PLATFORM: linux/amd64
-        run: npm run docker:build
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node .platform-actions/local-tools/container-security/lib/scan.mjs \
+            movie-reservation-service:local \
+            --evidence-version v1alpha3 --component reservation-service \
+            --output-dir "$RUNNER_TEMP/reservation-service-pr-security"
 
-      - name: Prepare security evidence directory
-        run: mkdir -p security-evidence
-
-      - name: Scan local container image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: movie-reservation-service:local
-          scanners: vuln
-          vuln-type: os,library
-          format: json
-          output: security-evidence/reservation-service-vulnerabilities.json
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          ignore-unfixed: false
-          hide-progress: true
-          exit-code: '0'
-          timeout: 5m
-          version: v0.70.0
-
-      - name: Evaluate provisional vulnerability policy
-        uses: ./.github/actions/evaluate-container-vulnerabilities
-        with:
-          report-path: security-evidence/reservation-service-vulnerabilities.json
-          expected-image: movie-reservation-service:local
-          subject-kind: local
-          evidence-artifact-name: >-
-            reservation-service-pr-vulnerability-report-${{ github.run_id }}-attempt-${{ github.run_attempt }}
-
-      - name: Upload vulnerability report
+      - name: Retain PR vulnerability diagnostics
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: >-
-            reservation-service-pr-vulnerability-report-${{ github.run_id }}-attempt-${{ github.run_attempt }}
-          path: security-evidence/reservation-service-vulnerabilities.json
+          name: reservation-service-pr-vulnerability-report-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reservation-service-pr-security/
           if-no-files-found: error
           retention-days: 14
 
@@ -243,10 +231,10 @@ jobs:
 
       - name: Prepare candidate publication
         id: image
-        uses: ./.github/actions/prepare-container-candidate
+        uses: movie-reservation-platform-lab/movie-platform-actions/actions/prepare-container-candidate@388507380ae9bc2b1ac91282ff16f40d4c65fcfc
         with:
-          expected-repository: movie-reservation-platform-lab/movie-reservation-service
-          expected-ref: refs/heads/main
+          component: reservation-service
+          github-token: ${{ github.token }}
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -261,6 +249,7 @@ jobs:
         with:
           context: .
           file: Dockerfile
+          target: runtime
           platforms: linux/amd64
           provenance: false
           push: true
@@ -270,123 +259,10 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.image.outputs.tag }}
 
-      - name: Attest published candidate
-        id: provenance
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+      - name: Attest and publish security evidence
+        uses: movie-reservation-platform-lab/movie-platform-actions/actions/container-evidence@388507380ae9bc2b1ac91282ff16f40d4c65fcfc
         with:
-          subject-name: ${{ steps.image.outputs.image_ref }}
-          subject-digest: ${{ steps.publish.outputs.digest }}
-          # Keep provenance in GitHub's attestation API. Registry-hosted
-          # attestations create sha256-* fallback tags that GHCR presents as
-          # installable container images even though they are not runnable.
-          push-to-registry: false
-
-      - name: Retain and verify candidate provenance
-        uses: ./.github/actions/verify-container-provenance
-        with:
-          bundle-path: ${{ steps.provenance.outputs.bundle-path }}
-          candidate-image: ${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}
+          evidence-version: v1alpha3
+          component: reservation-service
+          digest: ${{ steps.publish.outputs.digest }}
           github-token: ${{ github.token }}
-          source-revision: ${{ github.sha }}
-
-      - name: Generate candidate CycloneDX SBOM
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: ${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}
-          scanners: vuln
-          vuln-type: os,library
-          format: cyclonedx
-          output: security-evidence/reservation-service.cdx.json
-          list-all-pkgs: true
-          ignore-unfixed: false
-          hide-progress: true
-          exit-code: '0'
-          timeout: 5m
-          version: v0.70.0
-
-      - name: Generate candidate vulnerability report
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: ${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}
-          scanners: vuln
-          vuln-type: os,library
-          format: json
-          output: security-evidence/reservation-service-vulnerabilities.json
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          ignore-unfixed: false
-          hide-progress: true
-          exit-code: '0'
-          timeout: 5m
-          skip-setup-trivy: true
-          cache: false
-
-      - name: Evaluate provisional candidate vulnerability policy
-        uses: ./.github/actions/evaluate-container-vulnerabilities
-        with:
-          report-path: security-evidence/reservation-service-vulnerabilities.json
-          expected-image: ${{ steps.image.outputs.image_ref }}@${{ steps.publish.outputs.digest }}
-          subject-kind: immutable-ghcr
-          evidence-artifact-name: >-
-            reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
-
-      - name: Emit candidate evidence contract
-        env:
-          ATTESTATION_ID: ${{ steps.provenance.outputs.attestation-id }}
-          ATTESTATION_URL: ${{ steps.provenance.outputs.attestation-url }}
-          CANDIDATE_DIGEST: ${{ steps.publish.outputs.digest }}
-          CANDIDATE_REPOSITORY: ${{ steps.image.outputs.image_ref }}
-        run: node automation/candidate-evidence/src/emit.mjs
-
-      - name: Attest candidate evidence package
-        id: evidence-provenance
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
-        with:
-          subject-path: |
-            security-evidence/component-candidate-evidence-v1alpha1.json
-            security-evidence/reservation-service-provenance.json
-            security-evidence/reservation-service.cdx.json
-            security-evidence/reservation-service-vulnerabilities.json
-
-      - name: Validate candidate handoff metadata
-        id: handoff
-        uses: ./.github/actions/record-container-candidate
-        with:
-          artifact-name: reservation-service
-          candidate-registry: ${{ steps.image.outputs.registry }}
-          candidate-repository: ${{ steps.image.outputs.repository }}
-          candidate-image: ${{ steps.image.outputs.image_ref }}
-          candidate-tag: ${{ steps.image.outputs.tag }}
-          candidate-digest: ${{ steps.publish.outputs.digest }}
-          source-repository: ${{ github.repository }}
-          source-revision: ${{ github.sha }}
-          build-ref: ${{ steps.image.outputs.build_ref }}
-          evidence-artifact-name: >-
-            reservation-service-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
-          evidence-contract-path: security-evidence/component-candidate-evidence-v1alpha1.json
-          evidence-attestation-url: ${{ steps.evidence-provenance.outputs.attestation-url }}
-
-      - name: Upload candidate security evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ steps.handoff.outputs.evidence_artifact_name }}
-          path: |
-            ${{ steps.handoff.outputs.evidence_contract_path }}
-            security-evidence/reservation-service-provenance.json
-            security-evidence/reservation-service.cdx.json
-            security-evidence/reservation-service-vulnerabilities.json
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload rejected candidate diagnostics
-        if: ${{ failure() && !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: >-
-            reservation-service-rejected-security-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}
-          path: |
-            security-evidence/reservation-service.cdx.json
-            security-evidence/reservation-service-vulnerabilities.json
-          if-no-files-found: warn
-          retention-days: 14

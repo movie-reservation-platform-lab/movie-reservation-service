@@ -529,197 +529,110 @@ requests, manual workflow dispatches, and forks always use this path. Only
 `attestations: write`, and it uses the ephemeral `GITHUB_TOKEN` rather than a
 PAT or separately managed signing key.
 
-Repo-local composite actions keep policy and validation out of the workflow
-YAML. `evaluate-container-vulnerabilities` validates that Trivy JSON belongs to
-the expected local tag or immutable digest, writes the security summary, and
-applies the provisional CRITICAL-only policy. The publisher's
-`prepare-container-candidate` action validates the canonical event, constructs
-attempt-unique metadata, and rejects a stale `main` revision before registry
-login. `record-container-candidate` validates that the digest and tag match the
-source/run identity. Before canonical upload, it also checks that the evidence
-artifact name identifies that run attempt, the contract path is fixed, and the
-package-attestation URL belongs to the source repository and has a numeric
-identity. Its outputs and summary are job-local; only a successful workflow and
-its canonical artifact form the durable handoff. The dependency-free helpers
-are covered by focused subprocess and workflow contract tests.
+### Shared v1alpha3 security evidence
 
-These actions are an intentional local migration seam, not the final
-organization API. [The shared CI building-block issue](https://github.com/movie-reservation-platform-lab/.github/issues/5)
-owns the reusable workflow, second-container pilot, versioning, and eventual
-replacement of these actions with a full-SHA-pinned platform workflow call.
+The workflow pins preparation, evidence generation and PR scan tooling to
+`movie-platform-actions@388507380ae9bc2b1ac91282ff16f40d4c65fcfc`
+(actions PR #20). This enrollment revision builds on authenticated prepare at
+`036531133bcefd454b5afc0eb55f8ba0328901ea`. It must receive review and the
+environments reader/route PR must land before this producer switch is merged.
+If review changes the implementation, update every tooling pin and caller test
+together; do not select the latest branch tip automatically.
 
-Keep Testcontainers/Postgres e2e separate when it is added later so its Docker
-dependency, runtime, and failures remain independently visible. Do not hide it
-inside `service-quality`, `npm run check`, or another hosted wrapper.
-
-The pull-request workflow exposes five stable check names. Workflow YAML alone
-does not block a merge: after a pull request first produces a successful
-`container-security-check`, update the `main` ruleset to require that exact
-name. If `container-image-check` is currently required, replace it with the new
-name before merging this change while keeping pull-request enforcement enabled.
-During a prolonged scanner integration outage, a controlled maintainer may
-temporarily remove the required-check entry; the evaluator deliberately has no
-fail-open switch.
+Shared tooling owns scanner, provenance, publication guards and governed
+exemption policy. This repository owns its production target, workflow/job
+identity, permissions and caller tests under `automation/`. The retained
+repo-local actions, emitter, evaluator and `check-legacy.sh` are strict v1
+historical/rollback support only, not active publication or a fallback gate.
 
 ### Pull-request container security evidence
 
-The PR job builds `movie-reservation-service:local` once and asks Trivy to scan
-OS and application/library vulnerabilities. Fixed and unfixed findings are
-included, and every severity remains in the JSON report. Trivy produces
-evidence without making the final admission decision; the repo-local evaluator
-fails the job when one or more CRITICAL findings exist. HIGH findings are
-reported but do not block this provisional gate.
+`container-security-check` builds `runtime` for `linux/amd64`, then scans
+`movie-reservation-service:local` using the immutable shared local tool.
+It sends the caller's read-only `github.token` as `GH_TOKEN` for authenticated
+current-policy acquisition. It never logs into a registry, publishes, attests,
+or receives package/OIDC write authority; no `pull_request_target` is used.
 
-When CRITICAL findings exist, the job summary lists each vulnerability ID,
-package, installed version, and fixed version, or states that no fix was
-reported. The complete JSON report is uploaded with an attempt-unique name and
-retained for 14 days, including after a policy failure. Scanner, database,
-missing-report, malformed-report, and report-subject failures fail closed.
-
-This PR path intentionally does not publish an image, use registry credentials,
-or generate CycloneDX release evidence. Secret, configuration/IaC, license, and
-source scanning are also outside this provisional control. The job becomes a
-merge gate only when its exact check name is required by the repository
-ruleset.
+The full OS/library report includes all severities and fixed/unfixed findings.
+Unapproved CRITICAL findings fail; only matching, reviewed, unexpired approvals
+owned by actions may affect that decision. HIGH findings remain visible.
+Scanner, report validation, subject binding and policy lookup errors fail closed.
+The attempt-unique PR diagnostics directory is retained for 14 days, including
+after policy failure. Shared behavior tests live with the shared tooling; service
+tests assert the caller's target, pins, arguments and credential boundaries.
 
 ### Reproduce the container security gate locally
 
-Run the complete pull-request container check before pushing:
+Use a clean checkout of the exact shared revision (default sibling directory or
+`PLATFORM_ACTIONS_DIRECTORY`). Do not reset an existing dirty sibling checkout.
+For example, in a separate tooling directory:
 
 ```bash
+git clone https://github.com/movie-reservation-platform-lab/movie-platform-actions.git /path/to/reviewed-actions
+git -C /path/to/reviewed-actions checkout --detach 388507380ae9bc2b1ac91282ff16f40d4c65fcfc
+export PLATFORM_ACTIONS_DIRECTORY=/path/to/reviewed-actions
+export GH_TOKEN="$(gh auth token)"
 npm run container:security-check
 ```
 
-The command requires Node/npm and a running Docker daemon with a local Unix
-socket. It supports standard Docker Desktop, Linux, and rootless Unix-socket
-contexts; remote TCP, SSH, and Windows named-pipe contexts are not supported.
-A host Trivy installation is not required.
+Node 24, Git, authenticated GitHub policy access and a running Docker daemon are
+required. The wrapper rejects a wrong revision or dirty tooling before building.
+It builds the production `runtime` target from the repository root and delegates
+to shared `scan.mjs --evidence-version v1alpha3 --component reservation-service`.
+Reports and policy diagnostics go under ignored `security-evidence/local/`.
+No policy failure falls back to the retained legacy evaluator.
 
-Each run performs the following fail-closed sequence:
+The digest-pinned Dockerized scanner needs a supported local Unix-socket Docker
+context; its socket access is privileged even when mounted read-only.
+Docker layers and the shared scanner's cache reduce repeat work, while the
+vulnerability database and approved policy remain current. Local results are
+diagnostics, not canonical evidence or environment admission authority.
 
-1. Builds the production `runtime` target as
-   `movie-reservation-service:local` for `linux/amd64`. Repeated builds reuse
-   Docker layers, so changing an application dependency or base image normally
-   rebuilds only the affected layers.
-2. Runs Trivy 0.70.0 from a multi-architecture image pinned by manifest digest.
-   The scanner uses the same OS/library scope, severities, unfixed-finding
-   behavior, and five-minute timeout as hosted CI.
-3. Writes the complete report to
-   `security-evidence/reservation-service-vulnerabilities.json`. The generated
-   directory is gitignored but remains available for detailed diagnosis.
-4. Runs the repository's `evaluate-container-vulnerabilities` implementation,
-   prints the same human-readable summary, and exits unsuccessfully when any
-   CRITICAL finding exists. HIGH findings remain visible and non-blocking under
-   the provisional policy.
+### Candidate publication and transition acceptance
 
-The first run may take longer while Docker downloads the pinned scanner and
-Trivy downloads its vulnerability database. Later runs reuse the
-`movie-reservation-service-trivy-cache` Docker volume while retaining Trivy's
-normal database-update behavior. This gives an engineer a short local
-build-scan-fix loop without waiting for every hosted CI job.
+Only a canonical `push` to `main`, after all existing quality/tests/build gates,
+runs `publish-candidate` (both job ID and display name remain unchanged).
+Authenticated prepare uses the explicit `github-token` to check canonical main
+before registry login. The production image remains single-platform
+`linux/amd64`, with Buildx `provenance: false`; shared evidence attests the exact
+published digest and retains GitHub-hosted provenance (no registry fallback tags).
 
-The scanner container receives the active Docker Unix socket. A read-only
-socket mount still grants privileged Docker API access; containerization here
-isolates the Trivy installation, not the scanner from the host. The pinned
-scanner digest makes that trust decision explicit and reviewable. The local
-result is diagnostic evidence only: the required hosted check remains the
-merge authority because its clean runner and current database are independently
-controlled.
+Discovery tags remain
+`sha-<full-sha>-run-<run-id>-attempt-<attempt>`, never deployment authority.
+The canonical artifact remains
+`reservation-service-security-evidence-<run-id>-attempt-<attempt>`, containing:
 
-### Candidate publication and first-release checks
+- `component-candidate-evidence-v1alpha3.json`;
+- `reservation-service-provenance.json`;
+- `reservation-service.cdx.json`;
+- `reservation-service-vulnerabilities.json`.
 
-The publisher creates this attempt-unique discovery tag:
+The shared action binds the digest, repository, source revision, signer workflow,
+job, run/attempt, report subjects and original member hashes; it attests all four
+members before canonical upload. Failed candidates remain ineligible even if the
+image push succeeded. Rejected diagnostics are not canonical handoff evidence.
 
-```text
-ghcr.io/movie-reservation-platform-lab/movie-reservation-service:sha-<full-sha>-run-<run-id>-attempt-<attempt>
-```
+Environments must have service v3 reader capability before this producer emits v3.
+Select `admission_route=governed-v3` explicitly for a new v3 candidate.
+Omitted routes and `legacy-v1` continue strict v1 verification for historical
+candidates; they never detect format or downgrade automatically.
+Environments evaluates the original verified findings against policy fetched
+once per admission attempt. A historical producer decision or cached receipt is
+not a current admission decision. No admission-time vulnerability rescan is added.
 
-It also adds OCI source, revision, and version labels; records a GitHub-hosted
-build-provenance attestation for the exact digest; retains and verifies that
-attestation's Sigstore bundle; and scans the digest's OS and
-application/library packages with Trivy. After the provisional gate passes, a
-dependency-free emitter creates the candidate-evidence contract and hashes the
-retained bundle, CycloneDX SBOM, and complete vulnerability report. The workflow
-attests those four files, validates their run-attempt handoff identities, and
-uploads them in one canonical artifact retained for 14 days.
+After separately authorized publication/admission, record the exact source SHA,
+run/attempt, image digest, canonical artifact and authenticated admission result.
+Verify legacy v1 remains usable through its explicit route. The standalone
+environments `./admit inspect ... --admission-route governed-v3` freezes the new
+route. Existing `./demo` auto-dispatch retains v1: pre-admit through `./admit`
+and supply the resulting admission run when preparing a service v3 demo.
 
-The workflow summary records the registry, repository, full source SHA,
-digest-pinned image, Actions run URL, evidence artifact and contract path,
-evidence-package attestation URL, and image-provenance verification command.
-The image attestation is deliberately not pushed into GHCR because its
-`sha256-*` OCI fallback tag is presented by the package UI as an installable
-image even though it is not runnable. Downstream automation must use
-`ghcr.io/...@sha256:...`, never the discovery tag, as the candidate identity.
-
-The release gate fails on every CRITICAL finding, including findings without a
-fix. HIGH findings are reported but remain non-blocking under this provisional
-repository policy; a future environment-admission process may consume the
-report for its separately governed approval record. Registry, provenance
-verification, scanner, vulnerability-database, missing-report, malformed-report,
-subject-mismatch, evidence-emission, package-attestation, handoff-validation,
-and evidence-upload failures also make the workflow red. The evaluator has no
-waiver or fail-open input.
-
-Only a fully successful run uploads the canonical
-`reservation-service-security-evidence-*` artifact. A failed run may upload the
-available SBOM and vulnerability report under the distinct
-`reservation-service-rejected-security-evidence-*` diagnostic name. That name
-is never eligible for admission or handoff.
-
-A rerun checks that its source SHA still equals the canonical repository's
-current `main` SHA before logging in or pushing. If `main` has already advanced,
-the old run fails. This guard is best-effort: `main` can still advance while the
-image is building. A valid retry receives a new attempt tag, so it cannot
-overwrite a prior result, and downstream admission still selects an explicit
-attested digest.
-
-Superseded pull-request, manual, and fork runs are cancelled in event-specific
-concurrency groups. Canonical `main` push runs use a separate serialized group
-without cancelling an active run, so a manual validation or newer merge cannot
-interrupt the short interval between image push and attestation. If several
-merges arrive while one run is active, GitHub may replace an older pending run
-with the latest cumulative `main` state.
-
-After the first successful `main` publication:
-
-1. Inspect the `publish-candidate` summary and retain its digest and Actions run
-   URL together.
-2. Download the
-   `reservation-service-security-evidence-<run-id>-attempt-<attempt>` artifact.
-   Confirm that the candidate-evidence document, retained provenance bundle,
-   `reservation-service.cdx.json`, and
-   `reservation-service-vulnerabilities.json` exist. Confirm that the
-   vulnerability report's `ArtifactName` equals the digest-pinned candidate and
-   that the contract declares the same run, attempt, digest, and file hashes.
-3. In the GitHub package settings, verify the package is linked to this source
-   repository and change its visibility to public. The workflow deliberately
-   does not receive broader credentials to automate that one-time setting.
-4. From an unauthenticated environment, pull the exact digest to verify public
-   access.
-5. Authenticate to GHCR, then run the summary's verification command:
-
-   ```bash
-   gh attestation verify oci://ghcr.io/...@sha256:... \
-     --repo movie-reservation-platform-lab/movie-reservation-service
-   ```
-
-   This command obtains provenance from GitHub's attestation API. Registry-hosted
-   attestation bundles, and admission tooling that requires them, remain a
-   `movie-platform-environments` concern.
-
-6. Hand the digest, provenance, and security evidence to
-   `movie-platform-environments` for its separate admission and promotion
-   process.
-
-If the image push succeeds but attestation, verification, scanning, evaluation,
-emission, handoff validation, evidence upload, or summary generation fails,
-GHCR may contain the tagged image while the workflow is red. A failure after
-scan generation may retain the available reports under the rejected diagnostic
-name, but it never creates the canonical handoff artifact. Treat every red
-digest as ineligible: do not delete it, promote it, or infer success from its
-presence. Retry the same run only if its SHA is still current `main`; otherwise
-merge a fix or revert so the cumulative current state creates the next
-candidate.
+Rollback is a reviewed producer revert while retaining both environments readers.
+Select an available exact v1 candidate through `legacy-v1`, never weaken a v3
+gate or rewrite historical evidence/receipts. Expired GitHub artifacts need a
+fresh authorized publication, not assumed trust from a local cache.
+No merge, live publication, admission, ECR transfer, deployment or settings
+change is performed by this migration's implementation work.
 
 ## Container Image
 
