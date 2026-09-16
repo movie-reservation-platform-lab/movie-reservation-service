@@ -268,64 +268,9 @@ describe('repository and CI automation contract', () => {
     expect(publisher).not.toContain('automation/candidate-evidence');
   });
 
-  it('exposes script-backed local actions through explicit workflow contracts', () => {
-    const evaluateAction = readTextFile('.github/actions/evaluate-container-vulnerabilities/action.yml');
-    const prepareAction = readTextFile('.github/actions/prepare-container-candidate/action.yml');
-    const recordAction = readTextFile('.github/actions/record-container-candidate/action.yml');
-    const verifyProvenanceAction = readTextFile('.github/actions/verify-container-provenance/action.yml');
-
-    expect(evaluateAction).toContain('using: composite');
-    for (const input of ['report-path', 'expected-image', 'subject-kind', 'evidence-artifact-name'] as const) {
-      expect(evaluateAction).toContain(`${input}:`);
-    }
-    for (const output of ['high-count', 'critical-count', 'policy-result'] as const) {
-      expect(evaluateAction).toContain(`value: \${{ steps.evaluate.outputs.${output} }}`);
-    }
-    expect(evaluateAction).toContain(
-      'run: node "${{ github.action_path }}/../../../automation/container-security/src/evaluate.mjs"',
-    );
-
-    expect(prepareAction).toContain('using: composite');
-    expect(prepareAction).toContain('expected-repository:');
-    expect(prepareAction).toContain('expected-ref:');
-    for (const output of ['registry', 'repository', 'image_ref', 'tag', 'build_ref'] as const) {
-      expect(prepareAction).toContain(`value: \${{ steps.prepare.outputs.${output} }}`);
-    }
-    expect(prepareAction).toContain(
-      'run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/prepare.sh"',
-    );
-
-    expect(recordAction).toContain('using: composite');
-    for (const input of [
-      'artifact-name',
-      'candidate-registry',
-      'candidate-repository',
-      'candidate-image',
-      'candidate-tag',
-      'candidate-digest',
-      'source-repository',
-      'source-revision',
-      'build-ref',
-      'evidence-artifact-name',
-      'evidence-contract-path',
-      'evidence-attestation-url',
-    ] as const) {
-      expect(recordAction).toContain(`${input}:`);
-    }
-    expect(recordAction).toContain('value: ${{ steps.record.outputs.immutable_candidate }}');
-    expect(recordAction).toContain('value: ${{ steps.record.outputs.evidence_artifact_name }}');
-    expect(recordAction).toContain('value: ${{ steps.record.outputs.evidence_contract_path }}');
-    expect(recordAction).toContain('value: ${{ steps.record.outputs.evidence_attestation_url }}');
-    expect(recordAction).toContain(
-      'run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/record.sh"',
-    );
-
-    expect(verifyProvenanceAction).toContain('using: composite');
-    for (const input of ['bundle-path', 'candidate-image', 'github-token', 'source-revision'] as const) {
-      expect(verifyProvenanceAction).toContain(`${input}:`);
-    }
-    expect(verifyProvenanceAction).toContain(
-      'run: bash "${{ github.action_path }}/../../../automation/candidate-publication/src/verify-provenance.sh"',
+  it('does not expose a retired service-owned evidence generator', () => {
+    expect(readJsonFile<PackageManifest>('package.json').scripts).not.toHaveProperty(
+      'contract:candidate-evidence:generate',
     );
   });
 });

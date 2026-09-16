@@ -534,16 +534,17 @@ PAT or separately managed signing key.
 The workflow pins preparation, evidence generation and PR scan tooling to
 `movie-platform-actions@388507380ae9bc2b1ac91282ff16f40d4c65fcfc`
 (actions PR #20). This enrollment revision builds on authenticated prepare at
-`036531133bcefd454b5afc0eb55f8ba0328901ea`. It must receive review and the
-environments reader/route PR must land before this producer switch is merged.
-If review changes the implementation, update every tooling pin and caller test
-together; do not select the latest branch tip automatically.
+`036531133bcefd454b5afc0eb55f8ba0328901ea`. Actions #20, environments #109 and
+service #39 are merged. The pinned commit's tree matches the actions merge
+revision `51530765c604d3f55fa8fd9ccbd67846c9ac0c4a`. Publication 35061320113
+and v3 admission 35061597029 succeeded. Future upgrades must update every tooling
+pin and caller test together; do not select the latest branch tip automatically.
 
 Shared tooling owns scanner, provenance, publication guards and governed
 exemption policy. This repository owns its production target, workflow/job
-identity, permissions and caller tests under `automation/`. The retained
-repo-local actions, emitter, evaluator and `check-legacy.sh` are strict v1
-historical/rollback support only, not active publication or a fallback gate.
+identity, permissions and caller tests under `automation/`. Retired repo-local
+actions, emitter, evaluator and legacy check have been removed. Their code remains
+recoverable from Git history; the immutable v1 schema is retained under `contracts/`.
 
 ### Pull-request container security evidence
 
@@ -612,7 +613,7 @@ job, run/attempt, report subjects and original member hashes; it attests all fou
 members before canonical upload. Failed candidates remain ineligible even if the
 image push succeeded. Rejected diagnostics are not canonical handoff evidence.
 
-Environments must have service v3 reader capability before this producer emits v3.
+Environments now has service v3 reader capability and verified live acceptance.
 Select `admission_route=governed-v3` explicitly for a new v3 candidate.
 Omitted routes and `legacy-v1` continue strict v1 verification for historical
 candidates; they never detect format or downgrade automatically.
@@ -624,8 +625,10 @@ After separately authorized publication/admission, record the exact source SHA,
 run/attempt, image digest, canonical artifact and authenticated admission result.
 Verify legacy v1 remains usable through its explicit route. The standalone
 environments `./admit inspect ... --admission-route governed-v3` freezes the new
-route. Existing `./demo` auto-dispatch retains v1: pre-admit through `./admit`
-and supply the resulting admission run when preparing a service v3 demo.
+route. Use the environments checkout's current caller documentation: the separate
+caller-activation change makes new local requests explicitly v3 while preserving
+old saved requests. Before that change, pre-admit through `./admit` and supply the
+resulting admission run when preparing a service v3 demo.
 
 Rollback is a reviewed producer revert while retaining both environments readers.
 Select an available exact v1 candidate through `legacy-v1`, never weaken a v3

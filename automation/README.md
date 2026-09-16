@@ -3,17 +3,15 @@
 This directory owns CI and repository-control helpers. It is separate from the
 reservation service under `src/` and from service tests under `test/`.
 
-- `candidate-evidence/`: candidate-evidence contract, schema generation, and
-  dependency-free evidence emission.
-- `candidate-publication/`: candidate identity, provenance, and handoff
-  helpers used by local GitHub composite actions.
-- `container-security/`: local and hosted vulnerability-policy evaluation.
+- `container-security/`: the production-image build wrapper and subprocess
+  tests for the pinned shared scanner caller.
 - `repository/`: workflow and repository-structure contract tests.
 
-GitHub action manifests remain under `.github/actions/` because GitHub requires
-that entrypoint layout. Their executable behavior belongs here and is invoked
-relative to `${{ github.action_path }}`, so non-default checkout locations remain
-supported.
+`movie-platform-actions` owns evidence generation, provenance verification,
+publication guards, vulnerability policy and shared behavior tests. The service
+workflow consumes immutable action pins; local checks use the same tooling
+revision. Service-specific tests protect build targets, identities, permissions,
+pin alignment and failure propagation. There is no service-owned legacy fallback.
 
 Run automation checks independently from application tests:
 

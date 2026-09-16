@@ -1,73 +1,29 @@
-# Candidate Evidence Contracts
+# Evidence contract ownership
 
-This directory contains the producer-owned machine-readable contract for facts
-about reservation-service container candidates. It does not contain environment
-admission, eligibility, deployment, or observed-state decisions.
+Current publication uses shared `ComponentCandidateEvidence v1alpha3`.
+`movie-platform-actions/contracts/` owns its schema and policy definitions;
+the service consumes the immutable revision in `.github/workflows/ci.yml`.
+Environments owns independent verification and admission, not this producer.
 
-## Source and generated schema
+## Historical v1 contract
 
-`automation/candidate-evidence/src/contract.ts` is the runtime source of truth for
-`ComponentCandidateEvidence v1alpha1`. It uses strict Zod objects so unknown
-fields fail at every object boundary. The generated Draft 2020-12 JSON Schema is
-committed as `component-candidate-evidence-v1alpha1.schema.json` for consumers in
-other languages and repositories.
+`component-candidate-evidence-v1alpha1.schema.json` is retained unchanged as
+the published historical contract. It is not the schema for new publications.
+The service-owned generator, emitter, publication actions and provisional
+evaluator were retired after successful v3 publication and admission.
+Do not regenerate this schema from the current shared contract or reinterpret
+old evidence as v3. Historical fixtures/readers remain with environments.
 
-Regenerate it from the repository root:
+For implementation archaeology or an explicitly reviewed rollback, use Git
+history at service adoption commit `12b6fc488296a994f9c9b9e5bc3554819e5b1ead`.
+Restoring old source alone does not authorize publication or change admission
+policy. No old executable is retained as an automatic failure fallback.
 
-```bash
-npm run contract:candidate-evidence:generate
-```
+## Current trust boundaries
 
-The unit test compares the generated serialization with the committed file, so
-contract changes cannot leave the JSON Schema stale.
-
-The dependency-free publisher emitter deliberately does not load Zod or another
-project dependency. Its subprocess tests parse successful output through this
-strict contract, so producer logic cannot diverge from the contract without
-failing the automation test lane.
-
-A successful canonical run attests and uploads the candidate document, retained
-provenance bundle, CycloneDX SBOM, and Trivy report under the exact run/attempt
-artifact name declared by the document. Failed runs do not upload that canonical
-handoff name. Available scan diagnostics may instead use a distinct
-`reservation-service-rejected-security-evidence-*` artifact name that is never
-eligible as candidate evidence.
-
-## Semantic bindings
-
-JSON Schema enforces the document shape, constants, patterns, and closed object
-boundaries. Runtime producer and consumer validation must also enforce these
-cross-field bindings:
-
-- workflow URL identifies the declared canonical run and attempt;
-- security artifact name identifies the same run and attempt;
-- provenance subject digest equals the candidate digest;
-- vulnerability-report subject equals the digest-pinned candidate;
-- attestation URL identifies the declared attestation ID in the canonical source
-  repository.
-
-The attestation URL is a navigation field, not a trust anchor. The producer
-copies the Sigstore bundle returned by the provenance action into the evidence
-artifact and records its digest. Before emission, it must cryptographically
-verify the bundle and confirm its subject name, subject digest, signer identity,
-and workflow identity. Consumers must repeat those checks after downloading and
-hashing the declared files. Structural JSON Schema validation alone is not an
-admission decision.
-
-Paths are fixed contract values rather than producer input. This prevents path
-traversal and makes artifact layout changes explicit compatibility events.
-Consumers must materialize downloaded files beneath a package root using the
-declared `security-evidence/` paths before resolving and hashing them; an
-artifact downloader's extraction layout must not redefine contract paths.
-
-The committed fixture uses synthetic IDs, digests, counts, and timestamps. It
-documents the contract shape and does not identify a live image, run, or
-attestation.
-
-## Compatibility
-
-`apiVersion` and `kind` identify the contract. Additive changes still require
-consumer review because objects are closed. A breaking change uses a new
-version. The canonical workflow must dual-emit the old and new versions until
-the environment consumer supports the new version; it must not silently change
-the meaning of `v1alpha1`.
+The service retains its workflow/job, image, source and run/attempt identity.
+Shared tooling emits and attests the four-file package, verifies exact-subject
+provenance and evaluates governed vulnerability policy. Environments verifies
+original bytes and independently evaluates findings against current policy.
+A structurally valid document, old approval or cached receipt is not a fresh
+admission decision. See [development guidance](../DEVELOPMENT.md#shared-v1alpha3-security-evidence).

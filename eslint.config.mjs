@@ -14,14 +14,7 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: [
-            '*.config.ts',
-            '*.config.mjs',
-            'automation/candidate-evidence/src/emit.mjs',
-            'automation/container-security/src/evaluate.mjs',
-            'eslint.config.mjs',
-            'vitest.config.ts',
-          ],
+          allowDefaultProject: ['*.config.ts', '*.config.mjs', 'eslint.config.mjs', 'vitest.config.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
