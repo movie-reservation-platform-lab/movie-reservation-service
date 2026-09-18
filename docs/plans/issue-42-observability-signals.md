@@ -124,12 +124,12 @@ composition; this PR performs no deployment.
 
 ## 15. Risks and Mitigations
 
-| Risk | Impact | Likelihood | Mitigation |
-| --- | ---: | ---: | --- |
-| Route labels remain unbounded | High | Medium | Allow known templates and collapse unmatched routes. |
-| Missing traffic appears healthy | High | Medium | Document missing/stale separately from real zero. |
-| Telemetry breaks requests | High | Low | Preserve SDK fail-open behavior and regression test it. |
-| Audit behavior changes | High | Low | Keep audit code untouched and run its tests. |
+| Risk                            | Impact | Likelihood | Mitigation                                              |
+| ------------------------------- | -----: | ---------: | ------------------------------------------------------- |
+| Route labels remain unbounded   |   High |     Medium | Allow known templates and collapse unmatched routes.    |
+| Missing traffic appears healthy |   High |     Medium | Document missing/stale separately from real zero.       |
+| Telemetry breaks requests       |   High |        Low | Preserve SDK fail-open behavior and regression test it. |
+| Audit behavior changes          |   High |        Low | Keep audit code untouched and run its tests.            |
 
 ## 16. Done Criteria
 

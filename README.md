@@ -51,6 +51,9 @@ only one checkout or worktree at a time.
 See [DEVELOPMENT.md](DEVELOPMENT.md) for env setup, database seeding, local e2e,
 debugging, and observability details.
 
+The exact application metric, trace, log-correlation, zero/idle, and resource
+scope contract is documented in [docs/observability.md](docs/observability.md).
+
 ## Authentication Audit Demo
 
 The opt-in `/demo/auth/login` credential check emits OCSF audit events on stdout
