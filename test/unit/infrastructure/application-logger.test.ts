@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { context, trace, TraceFlags } from '@opentelemetry/api';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApplicationLogPayload } from '../../../src/infrastructure/observability/application-logger';
 import {
@@ -8,6 +10,18 @@ import {
 } from '../../../src/infrastructure/observability/request-context';
 
 describe('createApplicationLogPayload', () => {
+  const contextManager = new AsyncLocalStorageContextManager();
+
+  beforeAll(() => {
+    context.disable();
+    context.setGlobalContextManager(contextManager.enable());
+  });
+
+  afterAll(() => {
+    context.disable();
+    contextManager.disable();
+  });
+
   it('auto-attaches common request context without HTTP-only fields', () => {
     const payload = runWithRequestContext(createRequestContext(), () =>
       createApplicationLogPayload('reservation_request.created', {
@@ -80,6 +94,23 @@ describe('createApplicationLogPayload', () => {
     expect(payload.fields).not.toHaveProperty('request_id');
     expect(payload.fields).not.toHaveProperty('http_method');
     expect(payload.fields).not.toHaveProperty('http_route');
+  });
+
+  it('uses real active trace and span identifiers instead of the inbound parent span', () => {
+    const activeContext = trace.setSpanContext(context.active(), {
+      traceId: 'cccccccccccccccccccccccccccccccc',
+      spanId: 'dddddddddddddddd',
+      traceFlags: TraceFlags.SAMPLED,
+    });
+
+    const payload = context.with(activeContext, () =>
+      runWithRequestContext(createRequestContext(), () => createApplicationLogPayload('worker.completed')),
+    );
+
+    expect(payload.fields).toMatchObject({
+      trace_id: 'cccccccccccccccccccccccccccccccc',
+      span_id: 'dddddddddddddddd',
+    });
   });
 });
 

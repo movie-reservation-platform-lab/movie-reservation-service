@@ -7,7 +7,9 @@ import { recordHttpRequestMetrics } from '../../../infrastructure/observability/
 
 interface RequestContextHttpRequest {
   readonly method?: string;
+  readonly baseUrl?: string;
   readonly originalUrl?: string;
+  readonly route?: { readonly path?: unknown };
   readonly url?: string;
   readonly headers: Readonly<Record<string, string | readonly string[] | undefined>>;
 }
@@ -24,6 +26,8 @@ interface FinishedHttpRequestInput {
   readonly context: RequestContext;
   readonly startedAt: bigint;
 }
+
+const knownHttpRoutes = new Set(['/demo/auth/login', '/graphql', '/health', '/ready']);
 
 /**
  * Creates the per-request observability context at the inbound HTTP boundary.
@@ -67,13 +71,17 @@ export class RequestContextMiddleware implements NestMiddleware {
 /**
  * Records the completed HTTP boundary event.
  *
- * Metrics are emitted for every route, while structured request-finish logs
- * skip platform health checks to keep normal logs focused on user/API traffic.
+ * Health and readiness traffic is excluded from both metrics and structured
+ * request-finish logs so platform polling cannot make user traffic look healthy.
  */
 function recordFinishedHttpRequest(input: FinishedHttpRequestInput): void {
   const durationMs = Number(process.hrtime.bigint() - input.startedAt) / 1_000_000;
   const route = readRoute(input.req);
   const method = input.req.method ?? 'UNKNOWN';
+
+  if (!shouldRecordHttpRequest(route)) {
+    return;
+  }
 
   recordHttpRequestMetrics({
     method,
@@ -81,10 +89,6 @@ function recordFinishedHttpRequest(input: FinishedHttpRequestInput): void {
     statusCode: input.res.statusCode,
     durationMs,
   });
-
-  if (!shouldLogHttpRequest(route)) {
-    return;
-  }
 
   const amznTraceContainer =
     input.context.awsXAmznTraceId === undefined ? {} : { aws_x_amzn_trace_id: input.context.awsXAmznTraceId };
@@ -100,11 +104,21 @@ function recordFinishedHttpRequest(input: FinishedHttpRequestInput): void {
 }
 
 function readRoute(req: RequestContextHttpRequest): string {
-  return req.originalUrl ?? req.url ?? 'unknown';
+  const routePath = req.route?.path;
+
+  if (typeof routePath === 'string') {
+    const routedPath = `${req.baseUrl ?? ''}${routePath}` || '/';
+
+    if (knownHttpRoutes.has(routedPath)) {
+      return routedPath;
+    }
+  }
+
+  const requestPath = (req.originalUrl ?? req.url)?.split('?')[0];
+
+  return requestPath !== undefined && knownHttpRoutes.has(requestPath) ? requestPath : 'unmatched';
 }
 
-function shouldLogHttpRequest(route: string): boolean {
-  const path = route.split('?')[0];
-
-  return path !== '/health' && path !== '/ready';
+function shouldRecordHttpRequest(route: string): boolean {
+  return route !== '/health' && route !== '/ready';
 }

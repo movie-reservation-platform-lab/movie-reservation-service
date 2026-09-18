@@ -14,8 +14,13 @@ export interface ActivePropagationHeaders {
   readonly tracestate?: string;
 }
 
-/** Reads the trace id from the active OpenTelemetry span for log enrichment. */
-export function readTraceIdFromActiveSpan(): string | undefined {
+export interface ActiveSpanIdentifiers {
+  readonly traceId: string;
+  readonly spanId: string;
+}
+
+/** Reads valid trace and span identifiers from the active OpenTelemetry span. */
+export function readActiveSpanIdentifiers(): ActiveSpanIdentifiers | undefined {
   const activeSpan = trace.getActiveSpan();
 
   if (activeSpan === undefined) {
@@ -28,7 +33,12 @@ export function readTraceIdFromActiveSpan(): string | undefined {
     return undefined;
   }
 
-  return spanContext.traceId;
+  return { traceId: spanContext.traceId, spanId: spanContext.spanId };
+}
+
+/** Reads the trace id from the active OpenTelemetry span for log enrichment. */
+export function readTraceIdFromActiveSpan(): string | undefined {
+  return readActiveSpanIdentifiers()?.traceId;
 }
 
 /** Extracts the trace id from a valid W3C traceparent string. */
