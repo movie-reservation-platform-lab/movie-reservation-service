@@ -62,7 +62,6 @@ export class OtelMovieReservationObservability implements MovieReservationObserv
     recordReservationProcessorOutcomeMetrics({
       outcome: attributes.outcome,
       durationMs: attributes.durationMs,
-      ...(attributes.reason === undefined ? {} : { reason: attributes.reason }),
     });
 
     if (attributes.outcome === 'no-pending-request') {

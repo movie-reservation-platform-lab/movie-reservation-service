@@ -15,14 +15,17 @@ const graphqlOperationExceptionsTotal = serviceMeter.createCounter('graphql_oper
   description: 'GraphQL diagnostic exception counts with bounded exception labels.',
 });
 
-const graphqlBusinessOperations: readonly MovieReservationBusinessOperation[] = [
-  'me',
-  'movies',
-  'screenings',
-  'requestReservation',
-  'reservationRequestStatus',
-  'reservationResult',
-  'unknown',
+const graphqlBusinessOperations: ReadonlyArray<{
+  readonly businessOperation: MovieReservationBusinessOperation;
+  readonly operationType: string;
+}> = [
+  { businessOperation: 'me', operationType: 'query' },
+  { businessOperation: 'movies', operationType: 'query' },
+  { businessOperation: 'screenings', operationType: 'query' },
+  { businessOperation: 'requestReservation', operationType: 'mutation' },
+  { businessOperation: 'reservationRequestStatus', operationType: 'query' },
+  { businessOperation: 'reservationResult', operationType: 'query' },
+  { businessOperation: 'unknown', operationType: 'unknown' },
 ];
 const graphqlOperationOutcomes: readonly GraphqlOperationOutcome[] = [
   'success',
@@ -37,9 +40,13 @@ const graphqlOperationOutcomes: readonly GraphqlOperationOutcome[] = [
  * For more information, see: https://prometheus.io/docs/practices/instrumentation/#avoid-missing-metrics
  */
 export function initializeGraphqlOperationMetricSeries(): void {
-  for (const businessOperation of graphqlBusinessOperations) {
+  for (const { businessOperation, operationType } of graphqlBusinessOperations) {
     for (const outcome of graphqlOperationOutcomes) {
-      graphqlOperationTotal.add(0, { business_operation: businessOperation, outcome });
+      graphqlOperationTotal.add(0, {
+        business_operation: businessOperation,
+        graphql_operation_type: operationType,
+        outcome,
+      });
     }
   }
 }

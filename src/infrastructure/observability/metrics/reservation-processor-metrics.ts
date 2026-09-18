@@ -58,12 +58,8 @@ export function incrementReservationProcessorClaims(): void {
 export function recordReservationProcessorOutcomeMetrics(input: {
   readonly outcome: ReservationProcessorOutcome;
   readonly durationMs: number;
-  readonly reason?: string;
 }): void {
-  const attributes = {
-    outcome: input.outcome,
-    ...(input.reason === undefined ? {} : { reason: input.reason }),
-  };
+  const attributes = { outcome: input.outcome };
 
   reservationProcessorOutcomeTotal.add(1, attributes);
   reservationProcessorDurationMs.record(input.durationMs, attributes);

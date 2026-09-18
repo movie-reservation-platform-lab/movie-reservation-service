@@ -11,7 +11,7 @@ import pino from 'pino';
 
 import { config } from '../../config';
 import { getCurrentRequestContext } from './request-context';
-import { readTraceIdFromActiveSpan, readTraceIdFromTraceparent } from './trace-propagation';
+import { readActiveSpanIdentifiers, readTraceIdFromTraceparent } from './trace-propagation';
 
 export type LogLevelName = 'debug' | 'info' | 'warn' | 'error';
 
@@ -192,7 +192,8 @@ function writeLog(level: LogLevelName, event: string, fields: LogFields | undefi
 export function createApplicationLogPayload(event: string, fields?: LogFields): ApplicationLogPayload {
   const sanitizedFields = sanitizeLogFields(fields);
   const requestContext = getCurrentRequestContext();
-  const traceId = readTraceIdFromActiveSpan() ?? readTraceIdFromTraceparent(requestContext?.traceparent);
+  const activeSpan = readActiveSpanIdentifiers();
+  const traceId = activeSpan?.traceId ?? readTraceIdFromTraceparent(requestContext?.traceparent);
   const message = readMessage(sanitizedFields, event);
   const logFields = sanitizeLogFields({
     ...omitMessageField(sanitizedFields),
@@ -201,6 +202,7 @@ export function createApplicationLogPayload(event: string, fields?: LogFields): 
     user_id: requestContext?.userId ?? readStringLogField(sanitizedFields.user_id),
     movie_provider_code: requestContext?.movieProviderCode ?? readStringLogField(sanitizedFields.movie_provider_code),
     trace_id: traceId ?? readStringLogField(sanitizedFields.trace_id),
+    span_id: activeSpan?.spanId ?? readStringLogField(sanitizedFields.span_id),
     graphql_operation_name:
       requestContext?.graphqlOperationName ?? readStringLogField(sanitizedFields.graphql_operation_name),
     graphql_operation_type:
