@@ -1,0 +1,55 @@
+{
+  "name": "@movie-reservation-platform-lab/audit-sdk",
+  "version": "0.1.0",
+  "description": "Constrained OCSF 1.3 Authentication audit contract and publishers for the Movie Reservation Platform Lab",
+  "type": "module",
+  "license": "ISC",
+  "sideEffects": false,
+  "files": [
+    "contract",
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./eventbridge": {
+      "types": "./dist/eventbridge/index.d.ts",
+      "import": "./dist/eventbridge/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js"
+    },
+    "./contract/platform-audit-event-v1.schema.json": "./contract/platform-audit-event-v1.schema.json",
+    "./contract/authentication-accepted-v1.json": "./contract/examples/authentication-accepted-v1.json",
+    "./contract/authentication-rejected-v1.json": "./contract/examples/authentication-rejected-v1.json",
+    "./contract/manifest.json": "./contract/manifest.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json",
+    "test": "vitest run --config vitest.config.ts",
+    "test:consumer": "npm run build && node scripts/test-packed-consumer.mjs",
+    "release": "npm run build && node scripts/build-release.mjs",
+    "verify:release": "npm run build && node scripts/verify-release.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-eventbridge": "3.1141.0",
+    "ajv": "8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "25.5.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
