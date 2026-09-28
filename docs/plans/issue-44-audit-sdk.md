@@ -245,8 +245,8 @@ The AI will stop before this function's implementation, provide its exact signat
 - [x] Packed external consumer resolves and runs all public imports.
 - [x] Versioned package/contract artifact checksums reproduce and verify.
 - [x] Existing stdout service composition and behavior remain unchanged.
-- [ ] Package-local build/tests, workspace validation, service build/tests, `npm run ci`, and `git diff --check` pass.
-- [ ] Commits use `[ai][#44]` and a reviewable linked PR is opened without merge.
+- [x] Package-local build/tests, workspace validation, service build/tests, `npm run ci`, and `git diff --check` pass.
+- [x] Commits use `[ai][#44]` and reviewable PR [#45](https://github.com/movie-reservation-platform-lab/movie-reservation-service/pull/45) is open without merge.
 
 ## 18. Review Checklist
 
