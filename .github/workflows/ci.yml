@@ -47,6 +47,9 @@ jobs:
       - name: Run TypeScript typecheck
         run: npm run typecheck
 
+      - name: Run audit SDK typecheck
+        run: npm run typecheck:audit-sdk
+
   automation-quality:
     name: automation-quality
     runs-on: ubuntu-latest
@@ -94,6 +97,9 @@ jobs:
       - name: Run service unit tests
         run: npm run test:unit
 
+      - name: Run audit SDK tests
+        run: npm run test:audit-sdk
+
   service-integration-tests:
     name: service-integration-tests
     runs-on: ubuntu-latest
@@ -140,6 +146,15 @@ jobs:
 
       - name: Build service
         run: npm run build
+
+      - name: Build audit SDK
+        run: npm run build:audit-sdk
+
+      - name: Test packed audit SDK consumer
+        run: npm run test:audit-sdk:consumer
+
+      - name: Verify reproducible audit SDK release
+        run: npm run verify:audit-sdk:release
 
   container-security-check:
     name: container-security-check

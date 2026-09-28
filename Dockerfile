@@ -10,7 +10,7 @@ ENV CI=true
 
 COPY package.json package-lock.json ./
 
-RUN npm ci
+RUN npm ci --workspaces=false
 
 COPY . .
 
@@ -23,7 +23,7 @@ ENV CI=true
 
 COPY package.json package-lock.json ./
 
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --workspaces=false
 
 FROM ${NODE_BUILD_IMAGE} AS runtime-layout
 
