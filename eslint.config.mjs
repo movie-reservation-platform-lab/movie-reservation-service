@@ -5,7 +5,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'coverage/**', 'schema.gql'],
+    ignores: ['**/dist/**', 'coverage/**', 'packages/audit-sdk/release/**', 'schema.gql'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -43,7 +43,26 @@ export default tseslint.config(
     },
   },
   {
-    files: ['test/**/*.test.ts', 'automation/**/test/**/*.test.ts'],
+    files: ['packages/audit-sdk/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: ['./packages/audit-sdk/tsconfig.lint.json'],
+        projectService: false,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ['packages/audit-sdk/scripts/**/*.mjs'],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+      },
+    },
+    rules: tseslint.configs.disableTypeChecked.rules,
+  },
+  {
+    files: ['test/**/*.test.ts', 'automation/**/test/**/*.test.ts', 'packages/**/test/**/*.test.ts'],
     languageOptions: {
       globals: {
         ...globals.node,

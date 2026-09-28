@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+packages/audit-sdk/release/
 security-evidence/
 .claude/
 .codex/

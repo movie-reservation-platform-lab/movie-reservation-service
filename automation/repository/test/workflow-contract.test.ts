@@ -1,10 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 interface PackageManifest {
   readonly name?: unknown;
+  readonly dependencies?: Readonly<Record<string, string>>;
+  readonly devDependencies?: Readonly<Record<string, string>>;
   readonly scripts?: Readonly<Record<string, string>>;
   readonly workspaces?: unknown;
 }
@@ -18,17 +20,39 @@ const repositoryRoot = process.cwd();
 const standaloneSurfaces = ['docker-compose.yml', 'DEVELOPMENT.md', 'README.md', 'src/service-metadata.ts'] as const;
 
 describe('repository and CI automation contract', () => {
-  it('uses one root package and lockfile without workspace-scoped scripts', () => {
+  it('uses one root service plus the extraction-ready audit SDK workspace', () => {
     const packageManifest = readJsonFile<PackageManifest>('package.json');
     const packageLock = readJsonFile<PackageLock>('package-lock.json');
     const scripts = Object.values(packageManifest.scripts ?? {}).join('\n');
 
     expect(packageManifest.name).toBe('movie-reservation-service');
-    expect(packageManifest.workspaces).toBeUndefined();
+    expect(packageManifest.workspaces).toEqual(['packages/*']);
     expect(packageLock.name).toBe(packageManifest.name);
     expect(packageLock.packages?.['']?.name).toBe(packageManifest.name);
-    expect(scripts).not.toMatch(/(?:^|\s)npm\s+(?:-w|--workspace)(?:\s|=)/);
+    expect(packageLock.packages?.['packages/audit-sdk']?.name).toBe('@movie-reservation-platform-lab/audit-sdk');
+    expect(scripts).toContain('--workspace @movie-reservation-platform-lab/audit-sdk');
     expect(scripts).not.toContain('../node_modules');
+  });
+
+  it('keeps the audit SDK independent of service modules and exact-pins its dependencies', () => {
+    const sdkManifest = readJsonFile<PackageManifest>('packages/audit-sdk/package.json');
+    const sdkSources = readTypeScriptFiles('packages/audit-sdk/src').map(readTextFile).join('\n');
+
+    expect(sdkManifest.dependencies).toEqual({
+      '@aws-sdk/client-eventbridge': '3.1141.0',
+      ajv: '8.20.0',
+    });
+    for (const version of Object.values({
+      ...sdkManifest.dependencies,
+      ...sdkManifest.devDependencies,
+    })) {
+      expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+    }
+    expect(sdkSources).not.toMatch(/(?:^|['"])(?:\.\.\/){3,}src\//m);
+    expect(sdkSources).not.toContain('movie-reservation-service/src');
+    expect(readJsonFile<PackageManifest>('package.json').dependencies).not.toHaveProperty(
+      '@movie-reservation-platform-lab/audit-sdk',
+    );
   });
 
   it('keeps repository automation outside service test discovery', () => {
@@ -148,11 +172,16 @@ describe('repository and CI automation contract', () => {
     expect(workflow).toContain('run: npm run format:check');
     expect(workflow).toContain('run: npm run lint');
     expect(workflow).toContain('run: npm run typecheck');
+    expect(workflow).toContain('run: npm run typecheck:audit-sdk');
     expect(workflow).toContain('run: npm run test:unit');
+    expect(workflow).toContain('run: npm run test:audit-sdk');
     expect(workflow).toContain('run: npm run test:integration');
     expect(workflow).toContain('run: npm run typecheck:automation');
     expect(workflow).toContain('run: npm run test:automation');
     expect(workflow).toContain('run: npm run build');
+    expect(workflow).toContain('run: npm run build:audit-sdk');
+    expect(workflow).toContain('run: npm run test:audit-sdk:consumer');
+    expect(workflow).toContain('run: npm run verify:audit-sdk:release');
     expect(workflow).toContain('docker build --platform linux/amd64 --target runtime');
     expect(workflow).toMatch(/^permissions:\s*\n\s+contents: read$/m);
     expect(workflow).not.toContain('pull_request_target:');
@@ -281,6 +310,19 @@ function readTextFile(relativePath: string): string {
 
 function readJsonFile<T>(relativePath: string): T {
   return JSON.parse(readTextFile(relativePath)) as T;
+}
+
+function readTypeScriptFiles(relativeDirectory: string): string[] {
+  const directory = join(repositoryRoot, relativeDirectory);
+  return readdirSync(directory).flatMap((entry) => {
+    const absolutePath = join(directory, entry);
+    const relativePath = join(relativeDirectory, entry);
+    return statSync(absolutePath).isDirectory()
+      ? readTypeScriptFiles(relativePath)
+      : relativePath.endsWith('.ts')
+        ? [relativePath]
+        : [];
+  });
 }
 
 function readWorkflowJob(workflow: string, job: string): string {

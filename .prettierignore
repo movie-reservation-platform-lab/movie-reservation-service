@@ -1,5 +1,6 @@
 dist/
 coverage/
+packages/audit-sdk/release/
 schema.gql
 
 # Generated locally by .ai/sync.sh. Canonical .ai/ and root AGENTS.md stay formatted.

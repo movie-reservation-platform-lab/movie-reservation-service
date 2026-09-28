@@ -1,0 +1,38 @@
+# Audit SDK
+
+This package owns the Movie Reservation Platform Lab's constrained OCSF 1.3
+Authentication event contract. It is incubated here for later extraction and
+has no dependency on reservation-service source modules.
+
+Use explicit public subpaths:
+
+```ts
+import { buildAuthenticationAuditEvent } from '@movie-reservation-platform-lab/audit-sdk/core';
+import { EventBridgeAuditPublisher } from '@movie-reservation-platform-lab/audit-sdk/eventbridge';
+import { FakeAuditPublisher } from '@movie-reservation-platform-lab/audit-sdk/testing';
+```
+
+`AuditPublisher.publish` reports transport acceptance only. EventBridge
+acceptance does not prove that a downstream archive or Security Lake stored the
+event. The adapter accepts an exact event-bus ARN, owns its source/detail-type
+constants, and exposes bounded failure reasons without AWS exception details.
+
+The contract files are packaged under explicit `contract/*` exports. The v1
+schema is closed: unknown fields are rejected, so any emitted wire-field change
+requires a new contract version and a side-by-side migration.
+
+The EventBridge adapter accepts timeout values from 1 through 30,000 ms and up
+to five resource ARNs. Configuration errors expose only the invalid field name.
+
+## Commands
+
+```sh
+npm run build
+npm test
+npm run test:consumer
+npm run release
+npm run verify:release
+```
+
+`release` writes ignored local review artifacts under `release/<version>/`.
+Nothing in this package publishes externally or calls a live AWS endpoint.
