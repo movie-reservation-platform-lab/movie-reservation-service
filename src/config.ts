@@ -5,12 +5,26 @@ import { SERVICE_VERSION } from './service-metadata.js';
 const reservationWorkerModeSchema = z.enum(['disabled', 'fake-in-process']);
 const reservationFailureInjectionModeSchema = z.enum(['disabled', 'stable-random-unexpected-error']);
 const compositionProfileSchema = z.enum(['local-fixed-user', 'local-jwt', 'local-postgres', 'production-oidc']);
+const auditPublisherSchema = z.enum(['stdout', 'eventbridge']);
 
 export type AuthMode = 'local-fixed-user' | 'local-jwt' | 'oidc';
 export type PersistenceMode = 'in-memory' | 'postgres';
 export type ReservationWorkerMode = z.infer<typeof reservationWorkerModeSchema>;
 export type ReservationFailureInjectionMode = z.infer<typeof reservationFailureInjectionModeSchema>;
 export type CompositionProfile = z.infer<typeof compositionProfileSchema>;
+
+/**
+ * Which audit publisher the composition root builds. EventBridge settings exist
+ * only on the `eventbridge` variant, so code cannot read a bus ARN for stdout.
+ */
+export type AuditPublisherSettings =
+  | { readonly publisher: 'stdout' }
+  | {
+      readonly publisher: 'eventbridge';
+      readonly eventBusArn: string;
+      readonly timeoutMs: number;
+      readonly stdoutComparisonMirror: boolean;
+    };
 
 export type DemoAuthSettings =
   { readonly enabled: false } | { readonly enabled: true; readonly username: string; readonly password: string };
@@ -122,6 +136,14 @@ const configSchema = z
       .transform((value) => value === 'true'),
     DEMO_AUTH_USERNAME: z.string().max(256).optional(),
     DEMO_AUTH_PASSWORD: z.string().max(1024).optional(),
+    AUDIT_PUBLISHER: auditPublisherSchema.default('stdout'),
+    AUDIT_EVENT_BUS_ARN: z.string().max(1600).optional(),
+    // Same bounds and default as the infrastructure contract (movie-platform-infra PR 7).
+    AUDIT_PUBLISH_TIMEOUT_MS: z.coerce.number().int().min(100).max(5_000).default(1_000),
+    AUDIT_STDOUT_COMPARISON_MIRROR: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     ENABLE_GRAPHIQL: z
       .enum(['true', 'false'])
       .transform((value) => value === 'true')
@@ -156,6 +178,10 @@ const configSchema = z
       DEMO_AUTH_ENABLED: value.DEMO_AUTH_ENABLED,
       DEMO_AUTH_USERNAME: value.DEMO_AUTH_USERNAME,
       DEMO_AUTH_PASSWORD: value.DEMO_AUTH_PASSWORD,
+      AUDIT_PUBLISHER: value.AUDIT_PUBLISHER,
+      AUDIT_EVENT_BUS_ARN: value.AUDIT_EVENT_BUS_ARN,
+      AUDIT_PUBLISH_TIMEOUT_MS: value.AUDIT_PUBLISH_TIMEOUT_MS,
+      AUDIT_STDOUT_COMPARISON_MIRROR: value.AUDIT_STDOUT_COMPARISON_MIRROR,
       ENABLE_GRAPHIQL: value.ENABLE_GRAPHIQL,
     };
   })
@@ -214,6 +240,18 @@ const configSchema = z
       });
     }
 
+    // The bus ARN's exact shape is checked by the SDK when the publisher is composed at startup.
+    if (
+      value.AUDIT_PUBLISHER === 'eventbridge' &&
+      (value.AUDIT_EVENT_BUS_ARN === undefined || value.AUDIT_EVENT_BUS_ARN.trim().length === 0)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['AUDIT_EVENT_BUS_ARN'],
+        message: 'AUDIT_EVENT_BUS_ARN is required when AUDIT_PUBLISHER is eventbridge',
+      });
+    }
+
     if (value.RESERVATION_WORKER_HEARTBEAT_INTERVAL_MS >= value.RESERVATION_WORKER_LEASE_MS) {
       context.addIssue({
         code: 'custom',
@@ -258,12 +296,22 @@ const configSchema = z
       DEMO_AUTH_ENABLED,
       DEMO_AUTH_USERNAME,
       DEMO_AUTH_PASSWORD,
+      AUDIT_PUBLISHER,
+      AUDIT_EVENT_BUS_ARN,
+      AUDIT_PUBLISH_TIMEOUT_MS,
+      AUDIT_STDOUT_COMPARISON_MIRROR,
       ...rest
     } = value;
 
     return {
       ...rest,
       DEMO_AUTH: createDemoAuthSettings(DEMO_AUTH_ENABLED, DEMO_AUTH_USERNAME, DEMO_AUTH_PASSWORD),
+      AUDIT: createAuditPublisherSettings({
+        AUDIT_PUBLISHER,
+        AUDIT_EVENT_BUS_ARN,
+        AUDIT_PUBLISH_TIMEOUT_MS,
+        AUDIT_STDOUT_COMPARISON_MIRROR,
+      }),
       RESERVATION_FAILURE_INJECTION: createReservationFailureInjection({
         RESERVATION_FAILURE_INJECTION_MODE,
         RESERVATION_FAILURE_INJECTION_RATE,
@@ -285,6 +333,33 @@ function createDemoAuthSettings(
     throw new Error('Demo authentication requires explicit credentials');
   }
   return { enabled: true, username, password };
+}
+
+interface AuditPublisherEnvSettings {
+  readonly AUDIT_PUBLISHER: z.infer<typeof auditPublisherSchema>;
+  readonly AUDIT_EVENT_BUS_ARN: string | undefined;
+  readonly AUDIT_PUBLISH_TIMEOUT_MS: number;
+  readonly AUDIT_STDOUT_COMPARISON_MIRROR: boolean;
+}
+
+/**
+ * Under `stdout`, the EventBridge settings are ignored rather than rejected:
+ * infrastructure always injects all four variables, so rolling back must only
+ * require switching `AUDIT_PUBLISHER`.
+ */
+function createAuditPublisherSettings(settings: AuditPublisherEnvSettings): AuditPublisherSettings {
+  if (settings.AUDIT_PUBLISHER === 'stdout') {
+    return { publisher: 'stdout' };
+  }
+  if (settings.AUDIT_EVENT_BUS_ARN === undefined) {
+    throw new Error('AUDIT_EVENT_BUS_ARN is required when AUDIT_PUBLISHER is eventbridge');
+  }
+  return {
+    publisher: 'eventbridge',
+    eventBusArn: settings.AUDIT_EVENT_BUS_ARN,
+    timeoutMs: settings.AUDIT_PUBLISH_TIMEOUT_MS,
+    stdoutComparisonMirror: settings.AUDIT_STDOUT_COMPARISON_MIRROR,
+  };
 }
 
 /**
