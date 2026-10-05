@@ -162,10 +162,10 @@ describe('request-aware audit recorder', () => {
     vi.spyOn(publisher, 'publish').mockRejectedValueOnce(new Error('private transport detail'));
 
     await expect(recorder.record(attempt)).rejects.toThrow(AuditEmissionUnavailableError);
-    expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', {
-      audit_event_id: anyString,
-      failure_reason: 'unavailable',
-    });
+    expect(logger.error).toHaveBeenCalledWith(
+      'audit.emit.failed',
+      expect.objectContaining({ audit_event_id: anyString, failure_reason: 'unavailable' }),
+    );
     expect(JSON.stringify(logger.error.mock.calls)).not.toContain('private');
     expect(logger.info).not.toHaveBeenCalled();
   });
@@ -177,11 +177,49 @@ describe('request-aware audit recorder', () => {
       publisher.enqueue({ accepted: false, reason });
 
       await expect(recorder.record(attempt)).rejects.toThrow(AuditEmissionUnavailableError);
-      expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', {
-        audit_event_id: anyString,
-        failure_reason: reason,
-      });
+      expect(logger.error).toHaveBeenCalledWith(
+        'audit.emit.failed',
+        expect.objectContaining({ audit_event_id: anyString, failure_reason: reason }),
+      );
       expect(logger.info).not.toHaveBeenCalled();
     },
   );
+
+  it('logs the same correlation fields on publish failure as on success, but never the event body', async () => {
+    const requestContext = {
+      requestId: 'request-1',
+      correlationId: 'action-1',
+      awsXAmznTraceId: 'Root=1-6a9dd271-0123456789abcdef01234567',
+      awsCloudfrontRequestId: 'actual-cloudfront-header',
+    };
+    const activeContext = trace.setSpanContext(context.active(), { traceId, spanId, traceFlags: TraceFlags.SAMPLED });
+    const recordInRequest = (recorder: RequestAuthenticationAuditRecorder) =>
+      context.with(activeContext, () => runWithRequestContext(requestContext, () => recorder.record(attempt)));
+
+    const accepted = createRecorder();
+    await recordInRequest(accepted.recorder);
+    const failed = createRecorder();
+    failed.publisher.enqueue({ accepted: false, reason: 'timeout' });
+    await expect(recordInRequest(failed.recorder)).rejects.toThrow(AuditEmissionUnavailableError);
+
+    const expectedCorrelation = {
+      audit_event_id: anyString,
+      correlation_id: 'action-1',
+      request_id: 'request-1',
+      trace_id: traceId,
+      span_id: spanId,
+      aws_alb_trace_id: 'Root=1-6a9dd271-0123456789abcdef01234567',
+      aws_cloudfront_request_id: 'actual-cloudfront-header',
+      auth_boundary: 'demo_login',
+      auth_status_id: 2,
+    };
+    expect(accepted.logger.info).toHaveBeenCalledExactlyOnceWith('audit.authentication', expectedCorrelation);
+    expect(failed.logger.error).toHaveBeenCalledExactlyOnceWith('audit.emit.failed', {
+      ...expectedCorrelation,
+      audit_event_id: failed.publisher.publishedEvents[0]?.metadata.uid,
+      failure_reason: 'timeout',
+    });
+    // Not a fallback audit record: OCSF body fields stay out of operational logs.
+    expect(JSON.stringify(failed.logger.error.mock.calls)).not.toMatch(/class_uid|status_detail|metadata/);
+  });
 });

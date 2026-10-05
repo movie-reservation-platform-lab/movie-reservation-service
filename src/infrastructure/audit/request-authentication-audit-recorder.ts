@@ -84,19 +84,8 @@ export class RequestAuthenticationAuditRecorder implements AuthenticationAuditRe
         : { 'aws.cloudfront.request_id': platform.aws_cloudfront_request_id }),
     });
 
-    let result: AuditPublishResult;
-    try {
-      result = await this.publisher.publish(event);
-    } catch {
-      // Publishers should return a result, but a thrown error must not leak transport detail.
-      result = { accepted: false, auditEventId: event.metadata.uid, reason: 'unavailable' };
-    }
-    if (!result.accepted) {
-      this.logger.error('audit.emit.failed', { audit_event_id: event.metadata.uid, failure_reason: result.reason });
-      throw new AuditEmissionUnavailableError();
-    }
-
-    this.logger.info('audit.authentication', {
+    // Operational correlation only: the failure log is not a replacement audit record.
+    const correlationLogFields = {
       audit_event_id: event.metadata.uid,
       correlation_id: event.metadata.correlation_uid,
       request_id: platform.request_id,
@@ -106,7 +95,21 @@ export class RequestAuthenticationAuditRecorder implements AuthenticationAuditRe
       aws_cloudfront_request_id: platform.aws_cloudfront_request_id,
       auth_boundary: platform.auth_boundary,
       auth_status_id: event.status_id,
-    });
+    };
+
+    let result: AuditPublishResult;
+    try {
+      result = await this.publisher.publish(event);
+    } catch {
+      // Publishers should return a result, but a thrown error must not leak transport detail.
+      result = { accepted: false, auditEventId: event.metadata.uid, reason: 'unavailable' };
+    }
+    if (!result.accepted) {
+      this.logger.error('audit.emit.failed', { ...correlationLogFields, failure_reason: result.reason });
+      throw new AuditEmissionUnavailableError();
+    }
+
+    this.logger.info('audit.authentication', correlationLogFields);
     return {
       request_id: platform.request_id,
       audit_event_id: event.metadata.uid,

@@ -135,6 +135,12 @@ buffers and retries outside the application; process/task loss can still lose
 records. The application bounds pending stdout bytes at 256 KiB and reports
 `audit.stdout.failed` if it cannot accept another record or a write fails; the
 publisher then reports `unavailable` and the recorder logs `audit.emit.failed`.
+That error log carries the same correlation fields as the success log
+(`audit.authentication`: event, request, correlation, trace/span and ingress IDs,
+`auth_boundary`, `auth_status_id`) plus `failure_reason`, so operators can find
+the affected request and trace. It is operational telemetry, not a replacement
+audit record: it omits the OCSF body, and while stdout is the publisher it shares
+the output that just failed.
 The returned event ID identifies the generated event, not proof of archival.
 Stdout acceptance is deliberately weaker than the EventBridge acceptance planned
 for PR 8b. Matching demo credentials then fail closed with 503; rejected demo
