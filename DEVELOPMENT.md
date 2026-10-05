@@ -435,6 +435,15 @@ Adding another GraphQL framework is not needed just to solve this. The issue is
 the TypeScript runtime metadata emitted by the chosen dev compiler, not Apollo
 or the GraphQL schema itself.
 
+`test/integration/runtime/tsx-dev-runner.test.ts` boots the real entrypoint
+under `tsx` and calls a query with arguments, so a missing annotation fails a
+test instead of only `npm run dev`. The other process-level tests use
+`test/support/service-process.ts`, which runs an SWC build of `src/` with
+emitted metadata. They avoid `tsx` because OpenTelemetry's require hook resolves
+every `require()` and `tsx`'s resolver made that roughly double startup time.
+Their build directory has its own `package.json`, so they do not rewrite the
+tracked `schema.gql`.
+
 Build production JavaScript into `dist/`:
 
 ```bash

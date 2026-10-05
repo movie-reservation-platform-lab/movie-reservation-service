@@ -108,7 +108,9 @@ describe('reservation service emitted signal contract', () => {
       demoAuth: { enabled: true, username: 'test-user', password: 'test-password' },
     });
     await Promise.all([successfulApp.init(), failingApp.init(), serverErrorApp.init()]);
-  });
+    // Re-importing the full app graph (so instruments bind to this MeterProvider) and
+    // booting three apps is heavy by design; the 10 s default is too tight under load.
+  }, 30_000);
 
   afterAll(async () => {
     await Promise.all([successfulApp.close(), failingApp.close(), serverErrorApp.close()]);
