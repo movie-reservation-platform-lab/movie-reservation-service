@@ -17,6 +17,12 @@ acceptance does not prove that a downstream archive or Security Lake stored the
 event. The adapter accepts an exact event-bus ARN, owns its source/detail-type
 constants, and exposes bounded failure reasons without AWS exception details.
 
+The package ships ES modules and requires Node.js 24 or later. Its `default`
+export condition lets CommonJS consumers on Node 24 `require()` the same ESM
+files (Node's `require(esm)`; the package has no top-level await). The packed
+consumer test covers both module systems. Older runtimes and bundlers that
+cannot load ESM through `require()` are not supported.
+
 The contract files are packaged under explicit `contract/*` exports. The v1
 schema is closed: unknown fields are rejected, so any emitted wire-field change
 requires a new contract version and a side-by-side migration.
