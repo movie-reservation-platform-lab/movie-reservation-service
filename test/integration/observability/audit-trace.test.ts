@@ -2,11 +2,11 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
 
-import Ajv from 'ajv';
+import {
+  validateAuthenticationAuditEvent,
+  type AuthenticationAuditEvent,
+} from '@movie-reservation-platform-lab/audit-sdk/core';
 import { describe, expect, it, vi } from 'vitest';
-
-import type { AuthenticationAuditEvent } from '../../../src/application/audit/authentication-audit-event';
-import schema from '../../fixtures/audit/platform-audit-event-v1.schema.json';
 
 interface ExportedSpan {
   readonly traceId: string;
@@ -120,7 +120,7 @@ describe('audit event correlation with the real OpenTelemetry bootstrap', () => 
             .find((line) => line.startsWith('{"audit":'));
           expect(auditLine).toBeDefined();
           audit = (JSON.parse(auditLine ?? '{}') as { audit: AuthenticationAuditEvent }).audit;
-          expect(new Ajv({ strict: false }).validate(schema, audit)).toBe(true);
+          expect(validateAuthenticationAuditEvent(audit).valid).toBe(true);
           expect(audit.metadata.uid).toBe(body.audit_event_id);
           const spans = exports
             .flatMap((entry) => entry.resourceSpans ?? [])

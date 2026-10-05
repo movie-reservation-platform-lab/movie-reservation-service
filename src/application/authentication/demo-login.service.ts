@@ -1,4 +1,4 @@
-import type { AuthenticationOutcome } from '../audit/authentication-audit-event';
+import type { AuthenticationOutcome } from '../audit/authentication-audit-attempt';
 import type { AuthenticationAuditRecorder, AuditReceipt } from '../audit/ports/authentication-audit-recorder';
 
 export interface DemoCredentialVerifier {
@@ -17,9 +17,9 @@ export class DemoLoginService {
     private readonly audit: AuthenticationAuditRecorder,
   ) {}
 
-  login(body: unknown): DemoLoginResult {
+  async login(body: unknown): Promise<DemoLoginResult> {
     const outcome = this.authenticate(body);
-    const receipt = this.audit.record({ outcome, route: '/demo/auth/login', authBoundary: 'demo_login' });
+    const receipt = await this.audit.record({ outcome, route: '/demo/auth/login', authBoundary: 'demo_login' });
     return {
       authenticated: outcome.authenticated,
       message: outcome.authenticated ? 'Demo credentials accepted' : 'Invalid credentials',

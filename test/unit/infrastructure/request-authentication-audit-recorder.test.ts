@@ -1,10 +1,9 @@
+import { createFixedAuditEventProviders, FakeAuditPublisher } from '@movie-reservation-platform-lab/audit-sdk/testing';
 import { context, propagation, trace, TraceFlags } from '@opentelemetry/api';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type { AuthenticationAuditEvent } from '../../../src/application/audit/authentication-audit-event';
 import { AuditEmissionUnavailableError } from '../../../src/application/audit/audit-emission-unavailable-error';
-import type { AuditLocalAcceptance } from '../../../src/application/audit/ports/audit-event-sink';
 import { RequestAuthenticationAuditRecorder } from '../../../src/infrastructure/audit/request-authentication-audit-recorder';
 import { runWithRequestContext } from '../../../src/infrastructure/observability/request-context';
 import type { ApplicationLogger } from '../../../src/infrastructure/observability/application-logger';
@@ -14,24 +13,18 @@ const spanId = '0123456789abcdef';
 const anyString: unknown = expect.any(String);
 
 function createRecorder() {
-  const events: AuthenticationAuditEvent[] = [];
+  const publisher = new FakeAuditPublisher();
   const logger = { info: vi.fn<ApplicationLogger['info']>(), error: vi.fn<ApplicationLogger['error']>() };
-  const sink = {
-    emit(event: AuthenticationAuditEvent): AuditLocalAcceptance {
-      events.push(event);
-      return { accepted: true };
-    },
-  };
   const recorder = new RequestAuthenticationAuditRecorder(
     {
       serviceName: 'movie-reservation-service',
       serviceVersion: 'test-build',
       environment: 'test',
     },
-    sink,
+    publisher,
     logger,
   );
-  return { recorder, events, logger, sink };
+  return { recorder, publisher, logger };
 }
 
 const attempt = {
@@ -50,11 +43,11 @@ describe('request-aware audit recorder', () => {
     trace.disable();
   });
 
-  it('joins response, operational log and audit record with a real active unsampled context', () => {
-    const { recorder, events, logger } = createRecorder();
+  it('joins response, operational log and audit record with a real active unsampled context', async () => {
+    const { recorder, publisher, logger } = createRecorder();
     const activeContext = trace.setSpanContext(context.active(), { traceId, spanId, traceFlags: TraceFlags.NONE });
 
-    const receipt = context.with(activeContext, () =>
+    const receipt = await context.with(activeContext, () =>
       runWithRequestContext(
         {
           requestId: 'request-1',
@@ -67,7 +60,7 @@ describe('request-aware audit recorder', () => {
       ),
     );
 
-    const event = events[0];
+    const event = publisher.publishedEvents[0];
     expect(event).toMatchObject({
       metadata: { uid: receipt.audit_event_id, correlation_uid: 'action-1' },
       unmapped: {
@@ -92,9 +85,9 @@ describe('request-aware audit recorder', () => {
     );
   });
 
-  it('does not report a caller traceparent as an active trace when tracing is unavailable', () => {
-    const { recorder, events } = createRecorder();
-    const receipt = runWithRequestContext(
+  it('does not report a caller traceparent as an active trace when tracing is unavailable', async () => {
+    const { recorder, publisher } = createRecorder();
+    const receipt = await runWithRequestContext(
       {
         requestId: 'request-1',
         correlationId: 'action-1',
@@ -103,13 +96,14 @@ describe('request-aware audit recorder', () => {
       () => recorder.record(attempt),
     );
 
+    const platform = publisher.publishedEvents[0]?.unmapped.platform;
     expect(receipt).not.toHaveProperty('trace_id');
-    expect(events[0]?.unmapped.platform).not.toHaveProperty('trace_id');
-    expect(events[0]?.unmapped.platform).not.toHaveProperty('span_id');
+    expect(platform).not.toHaveProperty('trace_id');
+    expect(platform).not.toHaveProperty('span_id');
   });
 
   it('keeps concurrent request and trace contexts separate', async () => {
-    const { recorder, events } = createRecorder();
+    const { recorder, publisher } = createRecorder();
     await Promise.all(
       [1, 2, 3].map(async (index) => {
         const requestTraceId = String(index).repeat(32);
@@ -133,6 +127,9 @@ describe('request-aware audit recorder', () => {
       }),
     );
 
+    const events = [...publisher.publishedEvents].sort((left, right) =>
+      left.metadata.correlation_uid.localeCompare(right.metadata.correlation_uid),
+    );
     expect(events).toHaveLength(3);
     for (const [index, event] of events.entries()) {
       expect(event.metadata.correlation_uid).toBe(`action-${index + 1}`);
@@ -142,25 +139,48 @@ describe('request-aware audit recorder', () => {
     expect(new Set(events.map((event) => event.metadata.uid)).size).toBe(3);
   });
 
-  it('reports an emission exception without returning a receipt or logging the event body', () => {
-    const { recorder, sink, logger } = createRecorder();
-    vi.spyOn(sink, 'emit').mockImplementation(() => {
-      throw new Error('output unavailable');
-    });
+  it('builds the event with injected time and ID providers', async () => {
+    const publisher = new FakeAuditPublisher();
+    const recorder = new RequestAuthenticationAuditRecorder(
+      { serviceName: 'movie-reservation-service', serviceVersion: 'test-build', environment: 'test' },
+      publisher,
+      { info: vi.fn<ApplicationLogger['info']>(), error: vi.fn<ApplicationLogger['error']>() },
+      createFixedAuditEventProviders(1_788_814_800_000, '11111111-1111-4111-8111-111111111111'),
+    );
 
-    expect(() => recorder.record(attempt)).toThrow(AuditEmissionUnavailableError);
-    expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', { audit_event_id: anyString });
+    const receipt = await recorder.record(attempt);
+
+    expect(receipt.audit_event_id).toBe('11111111-1111-4111-8111-111111111111');
+    expect(publisher.publishedEvents[0]).toMatchObject({
+      time: 1_788_814_800_000,
+      metadata: { uid: '11111111-1111-4111-8111-111111111111' },
+    });
+  });
+
+  it('rejects without a receipt or event body in logs when the publisher throws', async () => {
+    const { recorder, publisher, logger } = createRecorder();
+    vi.spyOn(publisher, 'publish').mockRejectedValueOnce(new Error('private transport detail'));
+
+    await expect(recorder.record(attempt)).rejects.toThrow(AuditEmissionUnavailableError);
+    expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', {
+      audit_event_id: anyString,
+      failure_reason: 'unavailable',
+    });
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('private');
     expect(logger.info).not.toHaveBeenCalled();
   });
 
-  it.each(['buffer_full', 'write_failed'] as const)(
-    'does not return a receipt when the local sink reports %s',
-    (reason) => {
-      const { recorder, sink, logger } = createRecorder();
-      vi.spyOn(sink, 'emit').mockReturnValue({ accepted: false, reason });
+  it.each(['unavailable', 'timeout', 'rejected'] as const)(
+    'rejects without a receipt when the publisher reports %s',
+    async (reason) => {
+      const { recorder, publisher, logger } = createRecorder();
+      publisher.enqueue({ accepted: false, reason });
 
-      expect(() => recorder.record(attempt)).toThrow(AuditEmissionUnavailableError);
-      expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', { audit_event_id: anyString });
+      await expect(recorder.record(attempt)).rejects.toThrow(AuditEmissionUnavailableError);
+      expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', {
+        audit_event_id: anyString,
+        failure_reason: reason,
+      });
       expect(logger.info).not.toHaveBeenCalled();
     },
   );

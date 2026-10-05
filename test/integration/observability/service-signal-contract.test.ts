@@ -101,7 +101,7 @@ describe('reservation service emitted signal contract', () => {
       authMode: 'local-fixed-user',
       reservationWorkerMode: 'disabled',
       authenticationAuditRecorder: {
-        record(): never {
+        async record(): Promise<never> {
           throw new AuditEmissionUnavailableError();
         },
       },
@@ -221,7 +221,7 @@ describe('reservation service emitted signal contract', () => {
 
 function createAcceptingAuditRecorder(): AuthenticationAuditRecorder {
   return {
-    record() {
+    async record() {
       return { request_id: randomUUID(), audit_event_id: randomUUID() };
     },
   };

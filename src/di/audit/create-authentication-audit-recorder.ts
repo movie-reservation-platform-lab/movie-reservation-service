@@ -1,11 +1,11 @@
 import type { AuthenticationAuditRecorder } from '../../application/audit/ports/authentication-audit-recorder';
 import { config } from '../../config';
 import { RequestAuthenticationAuditRecorder } from '../../infrastructure/audit/request-authentication-audit-recorder';
-import { StdoutAuditEventSink } from '../../infrastructure/audit/stdout-audit-event-sink';
+import { StdoutAuditPublisher } from '../../infrastructure/audit/stdout-audit-publisher';
 import { applicationLogger } from '../../infrastructure/observability/application-logger';
 
 export function createAuthenticationAuditRecorder(): AuthenticationAuditRecorder {
-  const sink = new StdoutAuditEventSink(process.stdout, (reason) => {
+  const publisher = new StdoutAuditPublisher(process.stdout, (reason) => {
     applicationLogger.error('audit.stdout.failed', { failure_reason: reason });
   });
   return new RequestAuthenticationAuditRecorder(
@@ -14,7 +14,7 @@ export function createAuthenticationAuditRecorder(): AuthenticationAuditRecorder
       serviceVersion: config.SERVICE_VERSION,
       environment: config.DEPLOYMENT_ENVIRONMENT,
     },
-    sink,
+    publisher,
     applicationLogger,
   );
 }

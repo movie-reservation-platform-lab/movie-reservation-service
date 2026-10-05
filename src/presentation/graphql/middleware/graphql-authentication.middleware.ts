@@ -57,13 +57,13 @@ export class GraphqlAuthenticationMiddleware implements NestMiddleware {
     } catch (error) {
       if (error instanceof AuthenticationError) {
         try {
-          this.audit.record({
+          await this.audit.record({
             outcome: { authenticated: false, reason: 'UNAUTHENTICATED' },
             route: '/graphql',
             authBoundary: 'graphql',
           });
         } catch (auditError) {
-          // The recorder reports local failure; an unavailable sink must not change this rejection.
+          // The recorder reports the failure; an unavailable publisher must not change this rejection.
           if (!(auditError instanceof AuditEmissionUnavailableError)) {
             throw auditError;
           }
