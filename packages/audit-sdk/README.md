@@ -30,6 +30,12 @@ requires a new contract version and a side-by-side migration.
 The EventBridge adapter accepts timeout values from 1 through 30,000 ms and up
 to five resource ARNs. Configuration errors expose only the invalid field name.
 
+Prefer `createEventBridgeAuditPublisher({ eventBusArn, timeoutMs })`: it builds
+the AWS client with one attempt per publish (retrying belongs to a durable
+relay, not a request waiting on audit) and the Region taken from the bus ARN,
+using the default credential and endpoint chain. Consumers then never import or
+pin `@aws-sdk/*` themselves. Construct it once per process.
+
 ## Commands
 
 ```sh

@@ -1,6 +1,6 @@
 {
   "name": "@movie-reservation-platform-lab/audit-sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Constrained OCSF 1.3 Authentication audit contract and publishers for the Movie Reservation Platform Lab",
   "type": "module",
   "license": "ISC",

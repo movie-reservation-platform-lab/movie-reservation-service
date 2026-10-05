@@ -69,7 +69,7 @@
   "license": "ISC",
   "dependencies": {
     "@apollo/server": "^4.13.0",
-    "@movie-reservation-platform-lab/audit-sdk": "0.1.1",
+    "@movie-reservation-platform-lab/audit-sdk": "0.1.2",
     "@nestjs/apollo": "13.1.0",
     "@nestjs/common": "^11.1.9",
     "@nestjs/core": "^11.1.9",
