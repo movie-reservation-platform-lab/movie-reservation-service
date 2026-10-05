@@ -4,7 +4,7 @@
 
 Issue [#51](https://github.com/movie-reservation-platform-lab/movie-reservation-service/issues/51), a sub-issue of #34, is the second half of roadmap PR 8 ([movie-platform-infra plan](https://github.com/movie-reservation-platform-lab/movie-platform-infra/blob/main/docs/plans/eventbridge-security-lake-audit-demo.md#pr-8-integrate-the-reservation-service)). Configuration chooses the audit publisher (`stdout` or `eventbridge`). The EventBridge path uses the SDK adapter with a bounded timeout, an optional best-effort stdout comparison mirror, and bounded publish metrics.
 
-The application layer does not change. `AuditReceipt` keeps meaning "a durable store accepted this event". In 8b that store is EventBridge; the planned outbox (movie-platform-infra#76) later becomes another `AuditPublisher` behind the same recorder, and `DemoLoginService` stays as it is.
+Apart from switching demo login to fail open (§6.0, engineer decision), the application layer does not change. `AuditReceipt` keeps meaning "a durable store accepted this event". In 8b that store is EventBridge; the planned outbox (movie-platform-infra#76) later becomes another `AuditPublisher` behind the same recorder, and `DemoLoginService` stays as it is.
 
 ## 2. Goals
 
@@ -26,7 +26,7 @@ The application layer does not change. `AuditReceipt` keeps meaning "a durable s
 
 - `src/di/audit/create-authentication-audit-recorder.ts` always composes `StdoutAuditPublisher` and reads the global `config`.
 - `RequestAuthenticationAuditRecorder.record()` builds one event, awaits `publisher.publish(event)`, converts a thrown publisher error into `unavailable`, logs `audit.emit.failed` with correlation fields, and throws `AuditEmissionUnavailableError` on any non-accepted result.
-- `DemoLoginService` fails closed on success (503) and keeps rejections as 401; the GraphQL middleware keeps rejections as 401. Both are unchanged by 8b.
+- On `main`, `DemoLoginService` fails closed on success (503) and keeps rejections as 401; the GraphQL middleware keeps rejections as 401. 8b switches demo login to fail open (§6.0); the GraphQL middleware is unchanged.
 - The SDK (`packages/audit-sdk`, `0.1.1`, exact-pinned) exports `EventBridgeAuditPublisher(client: EventBridgeClientLike, { eventBusArn, timeoutMs, resources? })`. It validates the ARN shape and a 1–30,000 ms timeout, races `send` against a timer and caller abort, inspects partial `PutEvents` results, and maps errors to bounded reasons. It does not construct the AWS client.
 - `@aws-sdk/client-eventbridge` is an SDK dependency only; the service has no direct AWS SDK dependency.
 - Metrics use the OpenTelemetry meter in `src/infrastructure/observability/metrics/otel-meter.ts`, with pre-created bounded series (`graphql-operation-metrics.ts`) and an in-memory exporter contract test (`test/integration/observability/service-signal-contract.test.ts`).
@@ -38,7 +38,7 @@ The application layer does not change. `AuditReceipt` keeps meaning "a durable s
 
 - Roadmap §6.3 outcome matrix with EventBridge as the required publisher.
 - Prepare the outbox seam: the target design is a durable local write relayed afterwards, so nothing above the publisher may assume the store is remote (engineer decision, 8a plan §10).
-- Until the outbox exists, successful authentication fails closed (engineer decision). With EventBridge as the store, that means waiting for its acceptance within the timeout.
+- Until the outbox exists, authentication fails open, plus an alert (engineer decision): an unaccepted audit event never changes the credential decision; the response omits the receipt fields, and `audit.emit.failed` plus publish metrics are the alerting signal. The publish is still awaited within the timeout so an accepted event can return its receipt.
 - No retries in the request path (this plan's proposal, §7 Alternative C).
 - Configuration selects the publisher; the default stays stdout.
 - Metrics carry no event, request, trace or account IDs.
@@ -56,7 +56,7 @@ The application layer does not change. `AuditReceipt` keeps meaning "a durable s
 ## 6. Proposed Design
 
 ```text
-DemoLoginService / GraphQL middleware        (unchanged)
+DemoLoginService / GraphQL middleware        (fail open, §6.0)
   -> AuthenticationAuditRecorder port         (unchanged)
     -> RequestAuthenticationAuditRecorder     (unchanged: builds one event)
       -> AuditPublisher chosen at composition:
@@ -66,6 +66,19 @@ DemoLoginService / GraphQL middleware        (unchanged)
                          required = Metered(EventBridge, role=required),
                          mirror   = Metered(Stdout, role=mirror))
 ```
+
+### 6.0 Fail open on an unaccepted audit event
+
+`DemoLoginService` returns the credential decision whether or not the recorder accepted the event. `DemoLoginResult` becomes `DemoLoginDecision | (DemoLoginDecision & AuditReceipt)`: receipt fields appear only for an accepted event, never as `undefined` (`exactOptionalPropertyTypes`). The controller no longer maps `AuditEmissionUnavailableError` to 503; unexpected recorder errors still surface as 500.
+
+| Credentials | Audit accepted       | Response                                                     |
+| ----------- | -------------------- | ------------------------------------------------------------ |
+| Accepted    | Yes                  | 200 + receipt                                                |
+| Accepted    | No / timeout / throw | 200, no receipt; `audit.emit.failed` with `auth_status_id=1` |
+| Rejected    | Yes                  | 401 + receipt                                                |
+| Rejected    | No / timeout / throw | 401, no receipt; `audit.emit.failed` with `auth_status_id=2` |
+
+This deliberately departs from roadmap §6.3 (fail closed with 503). Cost: an accepted login can exist without an audit event, traced only by the operational log, which is not a replayable audit record. `TODO(movie-platform-infra#76)` in `DemoLoginService` marks the outbox that closes the gap. The alarm itself (on `audit_publish_total{audit_publisher_role="required",result="failed"}` and on `audit.emit.failed`) is infra-owned.
 
 ### 6.1 Configuration
 
@@ -123,7 +136,7 @@ A thrown publisher error is counted as `failed`/`unavailable` and rethrown, so t
 
 ### 6.5 No no-op publisher
 
-A no-op publisher must return either `accepted: true`, which hands out a receipt for an event no store accepted, or `accepted: false`, which makes every successful login 503. Neither is honest, and no current profile needs one: local and test runs use stdout or the SDK `FakeAuditPublisher`. Revisit only with a concrete consumer and an explicit "skipped" result.
+A no-op publisher must return either `accepted: true`, which hands out a receipt for an event no store accepted, or `accepted: false`, which logs every login as an audit failure and trips the alert. Neither is honest, and no current profile needs one: local and test runs use stdout or the SDK `FakeAuditPublisher`. Revisit only with a concrete consumer and an explicit "skipped" result.
 
 ### 6.6 Outbox seam
 
@@ -165,27 +178,29 @@ None.
 - No credentials in configuration; task-role credentials through the default chain.
 - The bus ARN is not logged or used as a metric attribute.
 - AWS error names and messages stay inside the SDK adapter.
-- **Unauthenticated traffic drives audit volume:** every rejected GraphQL token and demo login costs one `PutEvents` request. This is a property of synchronously auditing unauthenticated attempts with any remote sink, not an EventBridge capacity problem. The default `PutEvents` quota in `eu-central-1` is 2,400 requests/s per account (adjustable; 10,000 in `us-east-1`, `us-west-2`, `eu-west-1`), shared by every producer in the workload account. A single reservation-service task is expected to saturate well below that, but the quota is the account-wide ceiling. If it is reached, rejections stay 401 and successful demo logins fail closed (503). Mitigations: `failure_reason=throttled` metrics and alerting; ingress rate limiting (WAF/ALB, infra-owned) as the standard control; the outbox later removes the quota from the success path and lets the relay send up to 10 entries per request.
+- **Unauthenticated traffic drives audit volume:** every rejected GraphQL token and demo login costs one `PutEvents` request. This is a property of synchronously auditing unauthenticated attempts with any remote sink, not an EventBridge capacity problem. The default `PutEvents` quota in `eu-central-1` is 2,400 requests/s per account (adjustable; 10,000 in `us-east-1`, `us-west-2`, `eu-west-1`), shared by every producer in the workload account. A single reservation-service task is expected to saturate well below that, but the quota is the account-wide ceiling. If it is reached, responses are unchanged (fail open) but those logins go unaudited until throttling ends. Mitigations: `failure_reason=throttled` metrics and alerting; ingress rate limiting (WAF/ALB, infra-owned) as the standard control; the outbox later removes the quota from the success path and lets the relay send up to 10 entries per request.
 
 ## 11. Performance, Scalability, and Reliability Considerations
 
 - Each demo login and GraphQL rejection adds one EventBridge round trip, bounded by the timeout (default 1 s). Successful GraphQL requests are not audited (#50), so ordinary reads are unaffected.
 - One shared client per process; keep-alive connections reused.
 - An in-flight publish at SIGTERM finishes or times out within 5 s, inside the ECS stop timeout.
-- Duplicate risk: a call that times out may still have been accepted. The user sees 503 while an accepted event exists; `metadata.uid` links it to the `audit.emit.failed` log.
+- Latency: fail open does not remove the wait. Each demo login and GraphQL rejection still awaits the publish for up to the timeout, so a slow EventBridge slows logins by up to `AUDIT_PUBLISH_TIMEOUT_MS`; it no longer fails them.
+- Duplicate risk: a call that times out may still have been accepted. The response omits the receipt while an accepted event exists; `metadata.uid` links it to the `audit.emit.failed` log.
 
 ## 12. Implementation Steps
 
-| Step | Change                                                                                        | Files                                                                                                                                                        | Owner        |
-| ---- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
-| 1    | GraphQL TODO marker (#50); record the §10 decision in the 8a plan                             | `graphql-authentication.middleware.ts`, `docs/plans/issue-46-audit-sdk-integration.md`                                                                       | AI (done)    |
-| 2    | SDK factory, `0.1.2`, re-pin, tests with a stubbed client (Region from ARN, `maxAttempts: 1`) | `packages/audit-sdk/src/eventbridge/**`, `packages/audit-sdk/test/eventbridge/**`, SDK README, root `package.json`, lockfile                                 | AI           |
-| 3    | Config union and validation                                                                   | `src/config.ts`, `test/unit/config/audit-publisher-config.test.ts`                                                                                           | AI           |
-| 4    | `MeteredAuditPublisher` + audit metric series                                                 | `src/infrastructure/audit/metered-audit-publisher.ts`, `src/infrastructure/observability/metrics/audit-publish-metrics.ts`, unit tests, signal-contract test | AI           |
-| 5    | `StdoutComparisonMirrorAuditPublisher`                                                        | `src/infrastructure/audit/stdout-comparison-mirror-audit-publisher.ts`, unit test                                                                            | **Engineer** |
-| 6    | Composition: `createAuditPublisher(settings, deps)`; recorder factory uses it; startup log    | `src/di/audit/**`, `test/unit/infrastructure/create-audit-publisher.test.ts`                                                                                 | AI           |
-| 7    | Outcome matrix with EventBridge through the HTTP stack, using a fake `EventBridgeClientLike`  | `test/integration/api/demo-auth.test.ts` (or a sibling file)                                                                                                 | AI           |
-| 8    | Docs                                                                                          | `docs/audit-authentication-demo.md`, SDK README                                                                                                              | AI           |
+| Step | Change                                                                                                        | Files                                                                                                                                                        | Owner        |
+| ---- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| 1    | GraphQL TODO marker (#50); record the §10 decision in the 8a plan                                             | `graphql-authentication.middleware.ts`, `docs/plans/issue-46-audit-sdk-integration.md`                                                                       | AI (done)    |
+| 1b   | Fail open in `DemoLoginService` with `TODO(movie-platform-infra#76)`; controller drops the 503 mapping; tests | `demo-login.service.ts`, `demo-auth.controller.ts`, `demo-auth.test.ts`, `service-signal-contract.test.ts`, `docs/audit-authentication-demo.md`              | AI (done)    |
+| 2    | SDK factory, `0.1.2`, re-pin, tests with a stubbed client (Region from ARN, `maxAttempts: 1`)                 | `packages/audit-sdk/src/eventbridge/**`, `packages/audit-sdk/test/eventbridge/**`, SDK README, root `package.json`, lockfile                                 | AI           |
+| 3    | Config union and validation                                                                                   | `src/config.ts`, `test/unit/config/audit-publisher-config.test.ts`                                                                                           | AI           |
+| 4    | `MeteredAuditPublisher` + audit metric series                                                                 | `src/infrastructure/audit/metered-audit-publisher.ts`, `src/infrastructure/observability/metrics/audit-publish-metrics.ts`, unit tests, signal-contract test | AI           |
+| 5    | `StdoutComparisonMirrorAuditPublisher`                                                                        | `src/infrastructure/audit/stdout-comparison-mirror-audit-publisher.ts`, unit test                                                                            | **Engineer** |
+| 6    | Composition: `createAuditPublisher(settings, deps)`; recorder factory uses it; startup log                    | `src/di/audit/**`, `test/unit/infrastructure/create-audit-publisher.test.ts`                                                                                 | AI           |
+| 7    | Outcome matrix with EventBridge through the HTTP stack, using a fake `EventBridgeClientLike`                  | `test/integration/api/demo-auth.test.ts` (or a sibling file)                                                                                                 | AI           |
+| 8    | Docs                                                                                                          | `docs/audit-authentication-demo.md`, SDK README                                                                                                              | AI           |
 
 ## 13. Testing Strategy
 
@@ -194,7 +209,7 @@ None.
 - **Metrics:** accepted, each failure reason, thrown error; attributes exactly the bounded set; the signal-contract test lists the new instruments.
 - **Mirror:** required accepted + mirror fails → accepted; required failed → failed, mirror still called; required throws → rethrown, mirror still called; the same event object reaches both.
 - **Composition:** each settings variant produces the expected publisher graph (checked through behavior with fakes, not `instanceof` chains).
-- **Outcome matrix:** accepted/rejected credentials × accepted/`unavailable`/`timeout`/`throttled`/partial failure, with mirror on and off: success 200 + receipt or 503; rejection always 401.
+- **Outcome matrix:** accepted/rejected credentials × accepted/`unavailable`/`timeout`/`throttled`/partial failure, with mirror on and off: success always 200 and rejection always 401, with receipt fields only when the event was accepted (§6.0).
 - **Regression:** existing demo-auth, GraphQL, audit-trace and image-smoke tests unchanged and green.
 
 ## 14. Rollout / Migration Plan
@@ -208,7 +223,7 @@ None.
 
 | Risk                                                                                          | Impact |           Likelihood | Mitigation                                                                                                                                                                   |
 | --------------------------------------------------------------------------------------------- | -----: | -------------------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| EventBridge outage or throttling fails successful logins                                      | Medium |           Low/Medium | Deliberate interim (§10 of the 8a plan); bounded timeout; metrics by reason; one-variable rollback; outbox in movie-platform-infra#76.                                       |
+| EventBridge outage or throttling leaves successful logins unaudited                           |   High |           Low/Medium | Deliberate interim (fail open, 8a plan §10); `audit.emit.failed` with correlation fields; failure metrics with an infra-owned alarm; outbox in movie-platform-infra#76.      |
 | Invalid-token flood reaches the account `PutEvents` quota (2,400/s default in `eu-central-1`) | Medium |                  Low | Rejections stay 401; throttling visible in metrics; ingress rate limiting is the standard control (infra); quota is adjustable; the outbox removes it from the success path. |
 | Rollback blocked by strict config                                                             |   High | Low without the rule | Ignore EventBridge variables under `stdout`; explicit test.                                                                                                                  |
 | Mirror changes the required result                                                            |   High |                  Low | Decorator contract tests; the required result is returned before mirror errors can surface.                                                                                  |
@@ -257,8 +272,8 @@ Implement docs/plans/issue-51-audit-publisher-selection.md on branch
 ai/51-audit-publisher-selection, commit prefix [ai][#51].
 
 Constraints:
-- Do not change DemoLoginService, the AuthenticationAuditRecorder port,
-  AuditReceipt, or the audit wire format.
+- Do not change DemoLoginService beyond step 1b, the AuthenticationAuditRecorder
+  port, AuditReceipt, or the audit wire format.
 - No direct @aws-sdk dependency in the service; the SDK owns client construction.
 - No in-request retries; no no-op publisher; no AWS calls in tests.
 - Leave step 5 (mirror decorator) to the engineer; scaffold only its file

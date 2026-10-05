@@ -106,11 +106,15 @@ Decisions (engineer, 2026-10-05):
 - **Prepare the seam now:** `AuditReceipt` keeps meaning "a durable store
   accepted this event", so the outbox later replaces the publisher behind the
   same port without changing `DemoLoginService` or the recorder.
-- **Interim behavior until the outbox exists:** fail closed. Without a local
-  durable store, that means a successful login waits for EventBridge
-  acceptance within `AUDIT_PUBLISH_TIMEOUT_MS` and returns 503 otherwise.
-  Removing that wait is the outbox's job. No retries in the request path
-  (proposed with the 8b plan).
+- **Interim behavior until the outbox exists:** fail open, plus an alert.
+  If the publisher does not accept the event, the credential decision stands
+  (200 or 401) without receipt fields; `audit.emit.failed` and the publish
+  metrics drive alerting. Login availability does not depend on EventBridge,
+  at the cost that an accepted login can exist without an audit event, traced
+  only by the operational log. This changes roadmap §6.3 (which failed
+  closed with 503) and the 8a behavior; implemented on the #51 branch with a
+  `TODO(movie-platform-infra#76)` in `DemoLoginService`.
+- No retries in the request path (proposed with the 8b plan).
 
 See `docs/plans/issue-51-audit-publisher-selection.md`.
 

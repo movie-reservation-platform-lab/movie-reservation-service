@@ -66,10 +66,12 @@ audit event. Prefer the browser demo form for that check so the configured
 password does not end up in shell history.
 
 Responses use `Cache-Control: no-store`. If the audit publisher does not accept
-the event for **matching** credentials, the check fails closed with 503 and
-`authenticated: false`: an unavailable audit output, not a wrong password.
-Rejected credentials stay a generic 401 even when auditing fails; that response
-omits the receipt fields because no audit event was accepted.
+the event, the credential decision still stands (fail open): matching
+credentials return 200 and rejected credentials a generic 401, and both
+responses omit the receipt fields because no audit event was accepted. The
+`audit.emit.failed` log (with `auth_status_id`) and publish metrics are the
+alerting signal. A durable local outbox is planned to close this gap
+(movie-platform-infra#76).
 
 Unset the flag or set `DEMO_AUTH_ENABLED=false` and restart to remove the route
 (404). Enabled mode refuses to start without nonblank credentials, and is refused
@@ -143,8 +145,10 @@ audit record: it omits the OCSF body, and while stdout is the publisher it share
 the output that just failed.
 The returned event ID identifies the generated event, not proof of archival.
 Stdout acceptance is deliberately weaker than the EventBridge acceptance planned
-for PR 8b. Matching demo credentials then fail closed with 503; rejected demo
-credentials and GraphQL authentication rejections stay 401. A callback can report a write error after a response was
+for PR 8b. Authentication fails open on an unaccepted audit event: an accepted
+demo login returns 200 without a receipt, so it can exist with no audit record
+and only the operational log as a trace; rejected demo credentials and GraphQL
+authentication rejections stay 401. A callback can report a write error after a response was
 sent, so even local acceptance cannot guarantee delivery. Node's `write(false)`
 means that the line was buffered, not rejected; the adapter does not retry it.
 

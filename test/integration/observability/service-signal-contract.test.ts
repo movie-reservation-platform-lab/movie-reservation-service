@@ -23,10 +23,6 @@ interface AppFactoryModule {
   createApp(options?: AppModuleOptions): Promise<INestApplication>;
 }
 
-interface AuditErrorModule {
-  readonly AuditEmissionUnavailableError: new () => Error;
-}
-
 interface MovieReservationTokensModule {
   readonly RESERVATION_REQUEST_PROCESSOR: symbol;
 }
@@ -77,9 +73,6 @@ describe('reservation service emitted signal contract', () => {
     propagation.setGlobalPropagator(new W3CTraceContextPropagator());
 
     const appFactoryModule = (await import('../../../src/app.js')) as unknown as AppFactoryModule;
-    const auditErrorModule =
-      (await import('../../../src/application/audit/audit-emission-unavailable-error.js')) as unknown as AuditErrorModule;
-    const { AuditEmissionUnavailableError } = auditErrorModule;
 
     successfulApp = await appFactoryModule.createApp({
       authMode: 'local-fixed-user',
@@ -101,8 +94,9 @@ describe('reservation service emitted signal contract', () => {
       authMode: 'local-fixed-user',
       reservationWorkerMode: 'disabled',
       authenticationAuditRecorder: {
+        // An unexpected recorder defect, not an unavailable publisher (demo login fails open on that).
         async record(): Promise<never> {
-          throw new AuditEmissionUnavailableError();
+          throw new Error('recorder defect');
         },
       },
       demoAuth: { enabled: true, username: 'test-user', password: 'test-password' },
@@ -140,7 +134,7 @@ describe('reservation service emitted signal contract', () => {
     await request(serverErrorApp.getHttpServer())
       .post('/demo/auth/login')
       .send({ username: 'test-user', password: 'test-password' })
-      .expect(503);
+      .expect(500);
     await request(successfulApp.getHttpServer()).get('/caller-controlled-value').expect(404);
 
     await graphql(successfulApp, '{ movies { id title } }').expect(200);
@@ -180,7 +174,7 @@ describe('reservation service emitted signal contract', () => {
     expect(
       findPointValue(httpTotal, {
         http_route: '/demo/auth/login',
-        http_status_code: 503,
+        http_status_code: 500,
         status_family: '5xx',
         outcome: 'server_error',
       }),
