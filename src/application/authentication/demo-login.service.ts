@@ -29,14 +29,19 @@ export class DemoLoginService {
   /**
    * Checks the credentials, then awaits the audit record.
    *
-   * Fail open: when the audit publisher does not accept the event, the
-   * credential decision stands and the result omits the receipt fields. The
-   * recorder has already logged `audit.emit.failed` with the correlation
-   * fields, and publish metrics count the failure for alerting. An accepted
-   * login can therefore exist without an accepted audit event.
+   * - Accepted credentials, audit accepted: accepted result with its receipt.
+   * - Accepted credentials, audit unavailable: accepted result without receipt
+   *   fields (fail open; the login can exist without an accepted audit event).
+   * - Rejected credentials, audit accepted: rejected result with its receipt.
+   * - Rejected credentials, audit unavailable: rejected result without receipt
+   *   fields; an audit failure must not turn a rejection into an error.
    *
-   * TODO(movie-platform-infra#76): replace this with a durable local audit write
-   * (transactional outbox) relayed to EventBridge, so successful logins are
+   * When the audit is unavailable, the recorder has already logged
+   * `audit.emit.failed` with the correlation fields, and publish metrics count
+   * the failure for alerting.
+   *
+   * TODO(movie-platform-infra#76): put a durable local audit write (transactional
+   * outbox, relayed to EventBridge) behind the recorder, so successful logins are
    * audited without waiting for EventBridge. Then revisit failing closed when
    * that local write fails.
    */
