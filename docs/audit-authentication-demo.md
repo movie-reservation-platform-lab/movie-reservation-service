@@ -10,8 +10,8 @@ For every accepted or rejected credential check, the service writes:
 ```text
 HTTP request
   -> validate and compare credentials
-  -> build an OCSF Authentication event
-  -> stdout: {"audit": <event>}
+  -> build an OCSF Authentication event (audit SDK)
+  -> await the audit publisher: stdout {"audit": <event>}
   -> FireLens / Fluent Bit -> Firehose -> S3 -> Athena
 ```
 
@@ -65,9 +65,11 @@ event ID. Correct credentials return 200, `authenticated: true`, and a success
 audit event. Prefer the browser demo form for that check so the configured
 password does not end up in shell history.
 
-Responses use `Cache-Control: no-store`. If the process cannot accept the audit
-line locally, the check returns 503 with `authenticated: false`, even when the
-credentials matched. This is an unavailable audit output, not a wrong password.
+Responses use `Cache-Control: no-store`. If the audit publisher does not accept
+the event for **matching** credentials, the check fails closed with 503 and
+`authenticated: false`: an unavailable audit output, not a wrong password.
+Rejected credentials stay a generic 401 even when auditing fails; that response
+omits the receipt fields because no audit event was accepted.
 
 Unset the flag or set `DEMO_AUTH_ENABLED=false` and restart to remove the route
 (404). Enabled mode refuses to start without nonblank credentials, and is refused
@@ -102,15 +104,21 @@ of caller identity; a direct caller can supply them.
 
 ## Format and code boundaries
 
-The shared contract and JSON Schema are in [test/fixtures/audit](../test/fixtures/audit/).
-They constrain the platform's subset of OCSF 1.3; they are not the complete OCSF
+The OCSF contract, JSON Schema and builder live in the workspace audit SDK
+([packages/audit-sdk](../packages/audit-sdk/)), which the service exact-pins.
+[test/fixtures/audit](../test/fixtures/audit/) keeps the legacy stdout transport
+fixture; a unit test proves the SDK still produces that exact line. The contract
+and schema constrain the platform's subset of OCSF 1.3; they are not the complete OCSF
 schema. Authentication class `3002`, activity `99` and type `300299` describe a
 credential check, not creation of a login session. Failures use the literal
 `unknown` user; successes use the literal `demo-user`. Neither is copied from the
 submitted username. Failure details come from a fixed allowlist.
 
-- `src/application/audit/`: pure event builder and narrow output/recorder ports.
-- `src/infrastructure/audit/`: current request/trace context and raw stdout output.
+- `src/application/audit/`: authentication attempt/outcome types and the async
+  recorder port. It does not import the SDK.
+- `src/infrastructure/audit/`: maps attempts plus request/trace context into the
+  SDK builder, and a `StdoutAuditPublisher` implementing the SDK publisher port.
+- `src/di/audit/`: composes the recorder with the stdout publisher.
 - `src/application/authentication/demo-login.service.ts`: input checks and result.
 - `src/infrastructure/authentication/demo-credential-verifier.ts`: fixed-size
   digest comparisons with `timingSafeEqual`; both username and password are checked.
@@ -125,10 +133,18 @@ change does not make it a signature-validating production authenticator.
 A successful stdout write is **not** an S3 or Firehose acknowledgement. FireLens
 buffers and retries outside the application; process/task loss can still lose
 records. The application bounds pending stdout bytes at 256 KiB and reports
-`audit.stdout.failed` if it cannot accept another record or a write fails.
+`audit.stdout.failed` if it cannot accept another record or a write fails; the
+publisher then reports `unavailable` and the recorder logs `audit.emit.failed`.
+That error log carries the same correlation fields as the success log
+(`audit.authentication`: event, request, correlation, trace/span and ingress IDs,
+`auth_boundary`, `auth_status_id`) plus `failure_reason`, so operators can find
+the affected request and trace. It is operational telemetry, not a replacement
+audit record: it omits the OCSF body, and while stdout is the publisher it shares
+the output that just failed.
 The returned event ID identifies the generated event, not proof of archival.
-Known local failures produce demo HTTP 503; existing GraphQL authentication
-rejections stay 401. A callback can report a write error after a response was
+Stdout acceptance is deliberately weaker than the EventBridge acceptance planned
+for PR 8b. Matching demo credentials then fail closed with 503; rejected demo
+credentials and GraphQL authentication rejections stay 401. A callback can report a write error after a response was
 sent, so even local acceptance cannot guarantee delivery. Node's `write(false)`
 means that the line was buffered, not rejected; the adapter does not retry it.
 
@@ -149,8 +165,11 @@ npm run build
 
 Unit tests check the generated OCSF objects against the shared schema, raw stdout
 format and concurrent trace context. HTTP tests cover disabled/malformed/wrong/
-successful checks, secret redaction and unchanged GraphQL behavior. Ajv is a
-development-only dependency for those schema checks; the emitter has no AWS SDK.
+successful checks, secret redaction and unchanged GraphQL behavior. Schema
+validation comes from the SDK. The service does not call AWS yet; the SDK's
+EventBridge adapter is installed but not composed until PR 8b.
+`npm run smoke:image:audit-sdk` loads the SDK and its on-disk schema inside the
+built production image.
 A process-level test starts the real instrumentation bootstrap and verifies that
 the span referenced in the audit event reaches a local OTLP collector.
 

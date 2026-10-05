@@ -7,3 +7,9 @@
 !tsconfig.json
 !src/
 !src/**
+!packages/audit-sdk/package.json
+!packages/audit-sdk/tsconfig.json
+!packages/audit-sdk/src/
+!packages/audit-sdk/src/**
+!packages/audit-sdk/contract/
+!packages/audit-sdk/contract/**

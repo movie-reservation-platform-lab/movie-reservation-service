@@ -1,14 +1,24 @@
-import type { AuthenticationOutcome } from '../audit/authentication-audit-event';
+import { AuditEmissionUnavailableError } from '../audit/audit-emission-unavailable-error';
+import type { AuthenticationOutcome } from '../audit/authentication-audit-attempt';
 import type { AuthenticationAuditRecorder, AuditReceipt } from '../audit/ports/authentication-audit-recorder';
 
 export interface DemoCredentialVerifier {
   matches(username: string, password: string): boolean;
 }
 
-export interface DemoLoginResult extends AuditReceipt {
-  readonly authenticated: boolean;
-  readonly message: 'Invalid credentials' | 'Demo credentials accepted';
-}
+export type DemoLoginResult =
+  | (AuditReceipt & {
+      readonly authenticated: true;
+      readonly message: 'Demo credentials accepted';
+    })
+  | (AuditReceipt & {
+      readonly authenticated: false;
+      readonly message: 'Invalid credentials';
+    })
+  | {
+      readonly authenticated: false;
+      readonly message: 'Invalid credentials';
+    };
 
 /** Checks demo credentials only. It does not issue sessions, cookies or API tokens. */
 export class DemoLoginService {
@@ -17,14 +27,44 @@ export class DemoLoginService {
     private readonly audit: AuthenticationAuditRecorder,
   ) {}
 
-  login(body: unknown): DemoLoginResult {
+  /**
+   * Checks the credentials, then awaits the audit record.
+   *
+   * - Accepted credentials, audit accepted: accepted result with its receipt.
+   * - Accepted credentials, audit unavailable: rejects with
+   *   `AuditEmissionUnavailableError` (fail closed; never authenticate unaudited).
+   * - Rejected credentials, audit accepted: rejected result with its receipt.
+   * - Rejected credentials, audit unavailable: rejected result without receipt
+   *   fields; an audit failure must not turn a rejection into an error.
+   */
+  async login(body: unknown): Promise<DemoLoginResult> {
     const outcome = this.authenticate(body);
-    const receipt = this.audit.record({ outcome, route: '/demo/auth/login', authBoundary: 'demo_login' });
-    return {
-      authenticated: outcome.authenticated,
-      message: outcome.authenticated ? 'Demo credentials accepted' : 'Invalid credentials',
-      ...receipt,
-    };
+
+    try {
+      const receipt = await this.audit.record({ outcome, route: '/demo/auth/login', authBoundary: 'demo_login' });
+      if (outcome.authenticated) {
+        return {
+          authenticated: true,
+          message: 'Demo credentials accepted',
+          ...receipt,
+        };
+      }
+
+      return {
+        authenticated: false,
+        message: 'Invalid credentials',
+        ...receipt,
+      };
+    } catch (error) {
+      if (error instanceof AuditEmissionUnavailableError && !outcome.authenticated) {
+        return {
+          authenticated: false,
+          message: 'Invalid credentials',
+        };
+      }
+
+      throw error;
+    }
   }
 
   private authenticate(body: unknown): AuthenticationOutcome {

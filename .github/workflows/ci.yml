@@ -20,10 +20,12 @@ concurrency:
     }}
 
 jobs:
-  service-quality:
-    name: service-quality
+  # Audit contract and SDK jobs. They move with packages/audit-sdk when it is
+  # extracted; service jobs consume only the built SDK artifact.
+  audit-sdk-quality:
+    name: audit-sdk-quality
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Check out repository
@@ -38,17 +40,109 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check formatting
-        run: npm run format:check
+      - name: Check audit SDK formatting
+        run: npm run format:check:audit-sdk
 
-      - name: Run lint checks
-        run: npm run lint
-
-      - name: Run TypeScript typecheck
-        run: npm run typecheck
+      - name: Run audit SDK lint checks
+        run: npm run lint:audit-sdk
 
       - name: Run audit SDK typecheck
         run: npm run typecheck:audit-sdk
+
+      - name: Run audit SDK tests
+        run: npm run test:audit-sdk
+
+  audit-sdk-build:
+    name: audit-sdk-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build audit SDK
+        run: npm run build:audit-sdk
+
+      - name: Upload audit SDK build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: audit-sdk-dist
+          path: packages/audit-sdk/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  audit-sdk-release:
+    name: audit-sdk-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - audit-sdk-quality
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test packed audit SDK consumers
+        run: npm run test:audit-sdk:consumer
+
+      - name: Verify reproducible audit SDK release
+        run: npm run verify:audit-sdk:release
+
+  # Service jobs.
+  service-quality:
+    name: service-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - audit-sdk-build
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Stand-in for installing the released SDK package once it is extracted.
+      - name: Download audit SDK build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: audit-sdk-dist
+          path: packages/audit-sdk/dist
+
+      - name: Check formatting
+        run: npm run format:check:service
+
+      - name: Run lint checks
+        run: npm run lint:service
+
+      - name: Run TypeScript typecheck
+        run: npm run typecheck
 
   automation-quality:
     name: automation-quality
@@ -94,11 +188,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Stand-in for installing the released SDK package once it is extracted.
+      - name: Download audit SDK build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: audit-sdk-dist
+          path: packages/audit-sdk/dist
+
       - name: Run service unit tests
         run: npm run test:unit
-
-      - name: Run audit SDK tests
-        run: npm run test:audit-sdk
 
   service-integration-tests:
     name: service-integration-tests
@@ -119,6 +217,13 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # Stand-in for installing the released SDK package once it is extracted.
+      - name: Download audit SDK build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: audit-sdk-dist
+          path: packages/audit-sdk/dist
 
       - name: Run service integration tests
         run: npm run test:integration
@@ -144,17 +249,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Stand-in for installing the released SDK package once it is extracted.
+      - name: Download audit SDK build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: audit-sdk-dist
+          path: packages/audit-sdk/dist
+
       - name: Build service
         run: npm run build
-
-      - name: Build audit SDK
-        run: npm run build:audit-sdk
-
-      - name: Test packed audit SDK consumer
-        run: npm run test:audit-sdk:consumer
-
-      - name: Verify reproducible audit SDK release
-        run: npm run verify:audit-sdk:release
 
   container-security-check:
     name: container-security-check
@@ -192,6 +295,9 @@ jobs:
       - name: Build production image for vulnerability check
         run: docker build --platform linux/amd64 --target runtime --tag movie-reservation-service:local .
 
+      - name: Smoke-test audit SDK inside production image
+        run: npm run smoke:image:audit-sdk
+
       - name: Evaluate complete report with current approved policy
         env:
           GH_TOKEN: ${{ github.token }}
@@ -219,6 +325,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs:
+      - audit-sdk-quality
+      - audit-sdk-release
       - automation-quality
       - service-quality
       - service-unit-tests

@@ -13,9 +13,9 @@ export class DemoAuthController {
 
   @Post('login')
   @Header('Cache-Control', 'no-store')
-  login(@Body() body: unknown, @Res() response: DemoLoginHttpResponse): void {
+  async login(@Body() body: unknown, @Res() response: DemoLoginHttpResponse): Promise<void> {
     try {
-      const result = this.loginService.login(body);
+      const result = await this.loginService.login(body);
       response.status(result.authenticated ? 200 : 401).json(result);
     } catch (error) {
       if (error instanceof AuditEmissionUnavailableError) {

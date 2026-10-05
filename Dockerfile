@@ -9,12 +9,13 @@ WORKDIR /workspace
 ENV CI=true
 
 COPY package.json package-lock.json ./
+COPY packages/audit-sdk/package.json packages/audit-sdk/package.json
 
-RUN npm ci --workspaces=false
+RUN npm ci
 
 COPY . .
 
-RUN npm run build
+RUN npm run build:audit-sdk && npm run build
 
 FROM ${NODE_BUILD_IMAGE} AS production-dependencies
 
@@ -22,8 +23,10 @@ WORKDIR /workspace
 ENV CI=true
 
 COPY package.json package-lock.json ./
+COPY packages/audit-sdk/package.json packages/audit-sdk/package.json
 
-RUN npm ci --omit=dev --workspaces=false
+# Workspaces stay enabled so the service's exact-pinned audit SDK link and its runtime dependencies are installed.
+RUN npm ci --omit=dev
 
 FROM ${NODE_BUILD_IMAGE} AS runtime-layout
 
@@ -32,6 +35,10 @@ RUN mkdir /runtime-workspace && chown 65532:65532 /runtime-workspace
 COPY --from=production-dependencies --chown=65532:65532 /workspace/node_modules /runtime-workspace/node_modules
 COPY --from=build --chown=65532:65532 /workspace/package.json /runtime-workspace/package.json
 COPY --from=build --chown=65532:65532 /workspace/dist /runtime-workspace/dist
+# node_modules links the SDK here; contract/ holds the JSON Schema the SDK reads at runtime.
+COPY --from=build --chown=65532:65532 /workspace/packages/audit-sdk/package.json /runtime-workspace/packages/audit-sdk/package.json
+COPY --from=build --chown=65532:65532 /workspace/packages/audit-sdk/dist /runtime-workspace/packages/audit-sdk/dist
+COPY --from=build --chown=65532:65532 /workspace/packages/audit-sdk/contract /runtime-workspace/packages/audit-sdk/contract
 
 FROM ${NODE_BUILD_IMAGE} AS runtime-debug
 

@@ -62,6 +62,20 @@ export default tseslint.config(
     rules: tseslint.configs.disableTypeChecked.rules,
   },
   {
+    // Image smoke scripts run inside the CommonJS service image, so they use require().
+    files: ['scripts/image-smoke/**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      parserOptions: {
+        projectService: false,
+      },
+    },
+    rules: {
+      ...tseslint.configs.disableTypeChecked.rules,
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
     files: ['test/**/*.test.ts', 'automation/**/test/**/*.test.ts', 'packages/**/test/**/*.test.ts'],
     languageOptions: {
       globals: {
