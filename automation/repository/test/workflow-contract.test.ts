@@ -50,9 +50,52 @@ describe('repository and CI automation contract', () => {
     }
     expect(sdkSources).not.toMatch(/(?:^|['"])(?:\.\.\/){3,}src\//m);
     expect(sdkSources).not.toContain('movie-reservation-service/src');
-    expect(readJsonFile<PackageManifest>('package.json').dependencies).not.toHaveProperty(
-      '@movie-reservation-platform-lab/audit-sdk',
+  });
+
+  it('exact-pins the workspace audit SDK and builds it before local checks resolve its types', () => {
+    const packageManifest = readJsonFile<PackageManifest>('package.json');
+    const sdkManifest = readJsonFile<PackageManifest & { readonly version?: unknown }>(
+      'packages/audit-sdk/package.json',
     );
+
+    expect(packageManifest.dependencies?.['@movie-reservation-platform-lab/audit-sdk']).toBe(sdkManifest.version);
+    expect(packageManifest.scripts?.check).toMatch(/^npm run build:audit-sdk && /);
+  });
+
+  it('keeps audit SDK CI in its own jobs and gives service jobs only the built artifact', () => {
+    const workflow = readTextFile('.github/workflows/ci.yml');
+    const sdkCommand = /run: npm run [a-z:-]*audit-sdk/;
+    const downloadStep = 'uses: actions/download-artifact@';
+    const artifactName = 'name: audit-sdk-dist';
+
+    expect(readWorkflowJob(workflow, 'audit-sdk-quality')).toContain('run: npm run format:check:audit-sdk');
+    expect(readWorkflowJob(workflow, 'audit-sdk-quality')).toContain('run: npm run lint:audit-sdk');
+    expect(readWorkflowJob(workflow, 'audit-sdk-quality')).toContain('run: npm run typecheck:audit-sdk');
+    expect(readWorkflowJob(workflow, 'audit-sdk-quality')).toContain('run: npm run test:audit-sdk');
+    expect(readWorkflowJob(workflow, 'audit-sdk-release')).toContain('run: npm run test:audit-sdk:consumer');
+    expect(readWorkflowJob(workflow, 'audit-sdk-release')).toContain('run: npm run verify:audit-sdk:release');
+
+    const buildJob = readWorkflowJob(workflow, 'audit-sdk-build');
+    expect(buildJob.indexOf('run: npm run build:audit-sdk')).toBeLessThan(
+      buildJob.indexOf('uses: actions/upload-artifact@'),
+    );
+    expect(buildJob).toContain(artifactName);
+    expect(buildJob).toContain('if-no-files-found: error');
+    expect(readWorkflowJob(workflow, 'service-quality')).toMatch(/^ {4}needs:\s*\n {6}- audit-sdk-build$/m);
+
+    for (const [job, firstTypedStep] of [
+      ['service-quality', 'run: npm run lint:service'],
+      ['service-unit-tests', 'run: npm run test:unit'],
+      ['service-integration-tests', 'run: npm run test:integration'],
+      ['service-build', 'run: npm run build\n'],
+    ] as const) {
+      const jobText = readWorkflowJob(workflow, job);
+      expect(jobText).not.toMatch(sdkCommand);
+      expect(jobText).toContain(artifactName);
+      expect(jobText).toContain('path: packages/audit-sdk/dist');
+      expect(jobText.indexOf(downloadStep)).toBeGreaterThan(jobText.indexOf('run: npm ci'));
+      expect(jobText.indexOf(downloadStep)).toBeLessThan(jobText.indexOf(firstTypedStep));
+    }
   });
 
   it('keeps repository automation outside service test discovery', () => {
@@ -134,6 +177,9 @@ describe('repository and CI automation contract', () => {
     ] as const;
     const expectedJobs = [
       ...serviceJobs,
+      'audit-sdk-quality',
+      'audit-sdk-build',
+      'audit-sdk-release',
       'automation-quality',
       'container-security-check',
       'publish-candidate',
@@ -147,6 +193,7 @@ describe('repository and CI automation contract', () => {
       'movie-reservation-platform-lab/movie-platform-actions/actions/prepare-container-candidate@388507380ae9bc2b1ac91282ff16f40d4c65fcfc',
       'movie-reservation-platform-lab/movie-platform-actions/actions/container-evidence@388507380ae9bc2b1ac91282ff16f40d4c65fcfc',
       'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+      'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',
       'docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f',
       'docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9',
       'docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8',
@@ -169,8 +216,8 @@ describe('repository and CI automation contract', () => {
       expect(allowedExternalActionReferences).toContain(actionReference);
     }
 
-    expect(workflow).toContain('run: npm run format:check');
-    expect(workflow).toContain('run: npm run lint');
+    expect(workflow).toContain('run: npm run format:check:service');
+    expect(workflow).toContain('run: npm run lint:service');
     expect(workflow).toContain('run: npm run typecheck');
     expect(workflow).toContain('run: npm run typecheck:audit-sdk');
     expect(workflow).toContain('run: npm run test:unit');
@@ -233,6 +280,7 @@ describe('repository and CI automation contract', () => {
     expect(security).toContain('path: ${{ runner.temp }}/reservation-service-pr-security/');
     expect(security).toContain('retention-days: 14');
     expect(security.indexOf('docker build')).toBeLessThan(security.indexOf('node .platform-actions'));
+    expect(security.indexOf('docker build')).toBeLessThan(security.indexOf('run: npm run smoke:image:audit-sdk'));
     expect(security.indexOf('node .platform-actions')).toBeLessThan(security.indexOf('uses: actions/upload-artifact'));
     expect(workflow).not.toContain('uses: ./.github/actions/');
   });
@@ -254,6 +302,9 @@ describe('repository and CI automation contract', () => {
       expect(publisher).toContain(`- ${prerequisite}`);
     }
     expect(publisher).toContain('- automation-quality');
+    // The image ships the SDK, so its quality and release checks gate publication too.
+    expect(publisher).toContain('- audit-sdk-quality');
+    expect(publisher).toContain('- audit-sdk-release');
 
     expect(publisher).toMatch(
       /permissions:\s*\n\s+contents: read\s*\n\s+packages: write\s*\n\s+id-token: write\s*\n\s+attestations: write/,
