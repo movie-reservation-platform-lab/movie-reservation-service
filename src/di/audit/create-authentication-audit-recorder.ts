@@ -1,12 +1,19 @@
 import type { AuthenticationAuditRecorder } from '../../application/audit/ports/authentication-audit-recorder';
-import { config } from '../../config';
+import { config, type AuditPublisherSettings } from '../../config';
 import { RequestAuthenticationAuditRecorder } from '../../infrastructure/audit/request-authentication-audit-recorder';
-import { StdoutAuditPublisher } from '../../infrastructure/audit/stdout-audit-publisher';
 import { applicationLogger } from '../../infrastructure/observability/application-logger';
+import { createAuditPublisher } from './create-audit-publisher';
 
-export function createAuthenticationAuditRecorder(): AuthenticationAuditRecorder {
-  const publisher = new StdoutAuditPublisher(process.stdout, (reason) => {
-    applicationLogger.error('audit.stdout.failed', { failure_reason: reason });
+export function createAuthenticationAuditRecorder(
+  settings: AuditPublisherSettings = config.AUDIT,
+): AuthenticationAuditRecorder {
+  const publisher = createAuditPublisher(settings);
+  // The bus ARN stays out of logs: it names the audit account.
+  applicationLogger.info('audit.publisher.selected', {
+    audit_publisher: settings.publisher,
+    ...(settings.publisher === 'eventbridge'
+      ? { stdout_comparison_mirror: settings.stdoutComparisonMirror, publish_timeout_ms: settings.timeoutMs }
+      : {}),
   });
   return new RequestAuthenticationAuditRecorder(
     {
