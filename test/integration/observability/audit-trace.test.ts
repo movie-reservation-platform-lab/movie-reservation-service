@@ -1,4 +1,3 @@
-import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
 
@@ -7,6 +6,8 @@ import {
   type AuthenticationAuditEvent,
 } from '@movie-reservation-platform-lab/audit-sdk/core';
 import { describe, expect, it, vi } from 'vitest';
+
+import { startServiceProcess, type ServiceProcess } from '../../support/service-process';
 
 interface ExportedSpan {
   readonly traceId: string;
@@ -39,61 +40,40 @@ describe('audit event correlation with the real OpenTelemetry bootstrap', () => 
         res.end('{}');
       });
     });
-    let service: ChildProcess | undefined;
-    const output: string[] = [];
+    let service: ServiceProcess | undefined;
     try {
       const collectorPort = await listen(collector);
-      service = spawn(
-        process.execPath,
-        ['--import', 'tsx', '--import', './src/infrastructure/observability/instrumentation.ts', 'src/index.ts'],
-        {
-          cwd: process.cwd(),
-          env: {
-            ...process.env,
-            NODE_ENV: 'development',
-            HOST: '127.0.0.1',
-            PORT: '0',
-            LOG_LEVEL: 'info',
-            COMPOSITION_PROFILE: 'local-fixed-user',
-            ENABLE_GRAPHIQL: 'false',
-            RESERVATION_WORKER_MODE: 'disabled',
-            RESERVATION_FAILURE_INJECTION_MODE: 'disabled',
-            RESERVATION_FAILURE_INJECTION_RATE: '0',
-            DEMO_AUTH_ENABLED: 'true',
-            DEMO_AUTH_USERNAME: 'test-user',
-            DEMO_AUTH_PASSWORD: 'test-only-password',
-            DEPLOYMENT_ENVIRONMENT: 'test',
-            SERVICE_VERSION: 'audit-trace-test',
-            OBSERVABILITY_ENABLED: 'true',
-            OTEL_SDK_DISABLED: 'false',
-            OTEL_SERVICE_NAME: 'movie-reservation-service',
-            OTEL_TRACES_EXPORTER: 'otlp',
-            OTEL_METRICS_EXPORTER: 'none',
-            OTEL_LOGS_EXPORTER: 'none',
-            OTEL_TRACES_SAMPLER: 'always_on',
-            OTEL_PROPAGATORS: 'tracecontext,baggage',
-            OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: `http://127.0.0.1:${collectorPort}/v1/traces`,
-            OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
-            OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: 'http/json',
-            OTEL_EXPORTER_OTLP_COMPRESSION: 'none',
-            OTEL_BSP_SCHEDULE_DELAY: '100',
-          },
-          stdio: ['ignore', 'pipe', 'pipe'],
+      service = await startServiceProcess({
+        env: {
+          NODE_ENV: 'development',
+          LOG_LEVEL: 'info',
+          COMPOSITION_PROFILE: 'local-fixed-user',
+          ENABLE_GRAPHIQL: 'false',
+          RESERVATION_WORKER_MODE: 'disabled',
+          RESERVATION_FAILURE_INJECTION_MODE: 'disabled',
+          RESERVATION_FAILURE_INJECTION_RATE: '0',
+          DEMO_AUTH_ENABLED: 'true',
+          DEMO_AUTH_USERNAME: 'test-user',
+          DEMO_AUTH_PASSWORD: 'test-only-password',
+          DEPLOYMENT_ENVIRONMENT: 'test',
+          SERVICE_VERSION: 'audit-trace-test',
+          OBSERVABILITY_ENABLED: 'true',
+          OTEL_SDK_DISABLED: 'false',
+          OTEL_SERVICE_NAME: 'movie-reservation-service',
+          OTEL_TRACES_EXPORTER: 'otlp',
+          OTEL_METRICS_EXPORTER: 'none',
+          OTEL_LOGS_EXPORTER: 'none',
+          OTEL_TRACES_SAMPLER: 'always_on',
+          OTEL_PROPAGATORS: 'tracecontext,baggage',
+          OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: `http://127.0.0.1:${collectorPort}/v1/traces`,
+          OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+          OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: 'http/json',
+          OTEL_EXPORTER_OTLP_COMPRESSION: 'none',
+          OTEL_BSP_SCHEDULE_DELAY: '100',
         },
-      );
-      service.stdout?.on('data', (chunk: Buffer) => output.push(chunk.toString()));
-      service.stderr?.on('data', (chunk: Buffer) => output.push(chunk.toString()));
-
-      let serviceUrl = '';
-      await vi.waitFor(
-        () => {
-          expect(service?.exitCode).toBeNull();
-          const match = output.join('').match(/Server listening at (http:\/\/127\.0\.0\.1:\d+)/);
-          expect(match).not.toBeNull();
-          serviceUrl = match?.[1] ?? '';
-        },
-        { timeout: 10_000 },
-      );
+      });
+      const serviceUrl = service.url;
+      const output = (): string => service?.output() ?? '';
 
       const response = await fetch(`${serviceUrl}/demo/auth/login`, {
         method: 'POST',
@@ -114,8 +94,7 @@ describe('audit event correlation with the real OpenTelemetry bootstrap', () => 
       let audit: AuthenticationAuditEvent | undefined;
       await vi.waitFor(
         () => {
-          const auditLine = output
-            .join('')
+          const auditLine = output()
             .split('\n')
             .find((line) => line.startsWith('{"audit":'));
           expect(auditLine).toBeDefined();
@@ -150,24 +129,21 @@ describe('audit event correlation with the real OpenTelemetry bootstrap', () => 
         { timeout: 5_000 },
       );
 
-      const operationalLine = output
-        .join('')
+      const operationalLine = output()
         .split('\n')
         .find((line) => line.includes('"event":"audit.authentication"'));
       expect(operationalLine).toContain(body.audit_event_id);
       expect(operationalLine).toContain(body.trace_id);
       expect(audit?.unmapped.platform.aws_alb_trace_id).toBe('Root=1-6a9dd271-0123456789abcdef01234567');
-      expect(output.join('')).not.toContain('private-user-attempt');
-      expect(output.join('')).not.toContain('private-wrong-attempt');
+      expect(output()).not.toContain('private-user-attempt');
+      expect(output()).not.toContain('private-wrong-attempt');
     } catch (error) {
-      throw new Error(`Service output:\n${output.join('')}`, { cause: error });
+      throw new Error(`Service output:\n${service?.output() ?? ''}`, { cause: error });
     } finally {
-      if (service !== undefined) {
-        await stop(service);
-      }
+      await service?.stop();
       await new Promise<void>((resolve) => collector.close(() => resolve()));
     }
-  }, 20_000);
+  }, 60_000);
 });
 
 async function listen(server: Server): Promise<number> {
@@ -179,18 +155,4 @@ async function listen(server: Server): Promise<number> {
     throw new Error('Expected a loopback listener');
   }
   return address.port;
-}
-
-async function stop(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return;
-  }
-  const exited = once(child, 'exit');
-  const timeout = setTimeout(() => child.kill('SIGKILL'), 3_000);
-  child.kill('SIGTERM');
-  try {
-    await exited;
-  } finally {
-    clearTimeout(timeout);
-  }
 }

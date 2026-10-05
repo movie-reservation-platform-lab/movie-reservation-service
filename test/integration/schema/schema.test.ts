@@ -1,17 +1,27 @@
-import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 
 import type { INestApplication } from '@nestjs/common';
+import { GraphQLSchemaHost } from '@nestjs/graphql';
+import type * as GraphqlModule from 'graphql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '../../../src/app';
-import { generatedGraphqlSchemaPath } from '../../../src/generated-graphql-schema';
+
+// Vite would resolve `import 'graphql'` to its ESM build, while Nest require()s the
+// CommonJS build; graphql rejects schema objects from the other copy. Load the same copy.
+const { printSchema } = createRequire(join(process.cwd(), 'package.json'))('graphql') as typeof GraphqlModule;
 
 describe('generated GraphQL schema', () => {
   let app: INestApplication;
+  let schema: string;
 
   beforeAll(async () => {
     app = await createApp({ authMode: 'local-fixed-user' });
     await app.init();
+    // Print the schema this app built (sortSchema already applied) instead of reading
+    // schema.gql, which every concurrently starting app rewrites in place.
+    schema = printSchema(app.get(GraphQLSchemaHost).schema);
   });
 
   afterAll(async () => {
@@ -19,8 +29,6 @@ describe('generated GraphQL schema', () => {
   });
 
   it('contains the first movie reservation auth contract', () => {
-    const schema = readFileSync(generatedGraphqlSchemaPath, 'utf8');
-
     expect(schema).toContain('type Query');
     expect(schema).toContain('me: AuthenticatedUser!');
     expect(schema).toContain('type AuthenticatedUser');
@@ -30,8 +38,6 @@ describe('generated GraphQL schema', () => {
   });
 
   it('contains the movie reservation polling API contract', () => {
-    const schema = readFileSync(generatedGraphqlSchemaPath, 'utf8');
-
     expect(schema).toContain('movies: [Movie!]!');
     expect(schema).toMatch(
       /screenings\(\s+"""Optional movie id used to show screenings for one movie\."""\s+movieId: ID\s+\): \[Screening!\]!/,
