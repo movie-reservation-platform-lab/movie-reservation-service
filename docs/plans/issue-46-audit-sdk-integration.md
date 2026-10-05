@@ -46,15 +46,15 @@ PR 8b (separate issue, after this merges) adds config-selected publishers, Event
 
 ## 6. Implementation Steps
 
-| Step | Change                                                                                                                                                         | Owner        | Status                                    |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------- |
-| 1    | SDK `default` condition, `0.1.1`, ESM + CommonJS packed consumers                                                                                              | AI           | Done                                      |
-| 2    | Exact-pin, reverse the guard test, SDK build in `check`; separate `audit-sdk-*` CI jobs                                                                        | AI           | Done                                      |
-| 3    | Workspace-aware Dockerfile, runtime SDK files, in-image smoke (`npm run smoke:image:audit-sdk`)                                                                | AI           | Done                                      |
-| 4    | Async recorder port; await at GraphQL middleware, demo login and controller (mechanical, behavior unchanged)                                                   | AI           | Done                                      |
-| 5    | Recorder on SDK builder + providers; `StdoutAuditPublisher`; delete service builder, `AuditEventSink`, duplicated schema; tests on SDK fakes; byte-compat test | AI           | Done                                      |
-| 6    | Rejected-login audit-failure policy                                                                                                                            | **Engineer** | Open                                      |
-| 7    | Docs (`docs/audit-authentication-demo.md`, SDK README, this plan)                                                                                              | AI           | Done; describes the behavior after step 6 |
+| Step | Change                                                                                                                                                         | Owner        | Status |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------ |
+| 1    | SDK `default` condition, `0.1.1`, ESM + CommonJS packed consumers                                                                                              | AI           | Done   |
+| 2    | Exact-pin, reverse the guard test, SDK build in `check`; separate `audit-sdk-*` CI jobs                                                                        | AI           | Done   |
+| 3    | Workspace-aware Dockerfile, runtime SDK files, in-image smoke (`npm run smoke:image:audit-sdk`)                                                                | AI           | Done   |
+| 4    | Async recorder port; await at GraphQL middleware, demo login and controller (mechanical, behavior unchanged)                                                   | AI           | Done   |
+| 5    | Recorder on SDK builder + providers; `StdoutAuditPublisher`; delete service builder, `AuditEventSink`, duplicated schema; tests on SDK fakes; byte-compat test | AI           | Done   |
+| 6    | Rejected-login audit-failure policy                                                                                                                            | **Engineer** | Done   |
+| 7    | Docs (`docs/audit-authentication-demo.md`, SDK README, this plan)                                                                                              | AI           | Done   |
 
 ## 7. Hybrid Ownership Card (step 6)
 
@@ -95,6 +95,11 @@ Follow-up: the GraphQL middleware makes the same "rejection beats audit failure"
 ## 10. Open Question Before PR 8b
 
 Whether _successful_ authentication should block on remote audit acceptance (current roadmap §6.3: fail closed with a bounded timeout), or block only on a durable **local** write that is relayed asynchronously (outbox/spool pattern). Decide this before EventBridge becomes the required publisher. Until then, 8a keeps today's fail-closed behavior on local stdout acceptance.
+
+A replayable fallback for unaccepted events belongs to that decision, not to
+operational logs. 8a only makes `audit.emit.failed` carry the same correlation
+fields as `audit.authentication`, so a failed publish stays traceable without
+creating a second, unofficial audit trail.
 
 ## 11. Done Criteria
 

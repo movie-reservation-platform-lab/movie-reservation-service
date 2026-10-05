@@ -55,6 +55,9 @@ describe('opt-in demo credential check over HTTP', () => {
       .set('X-Amzn-Trace-Id', 'Root=1-6a9dd271-0123456789abcdef01234567')
       .send({ username: 'private-submitted-username', password: 'private-wrong-password' });
     const body = response.body as DemoLoginResult;
+    if (!('audit_event_id' in body)) {
+      throw new Error('Expected rejected credentials to include an accepted audit receipt');
+    }
 
     expect(response.status).toBe(401);
     expect(response.headers['cache-control']).toBe('no-store');
@@ -102,8 +105,23 @@ describe('opt-in demo credential check over HTTP', () => {
     expect(JSON.stringify(publisher.publishedEvents)).not.toContain(username);
   });
 
+  it.each([
+    ['wrong password', { username, password: 'incorrect_nonexistent_password' }],
+    ['missing password', { username }],
+    ['malformed username', { username: 123, password }],
+  ])('keeps %s rejected with 401 and no receipt when audit publishing is unavailable', async (_case, body) => {
+    publisher.enqueue({ accepted: false, reason: 'unavailable' });
+
+    const response = await request(app.getHttpServer()).post('/demo/auth/login').send(body);
+    expect(response.status).toBe(401);
+    expect(response.headers['cache-control']).toBe('no-store');
+    // toEqual pins absence: no receipt fields, not even undefined ones.
+    expect(response.body).toEqual({ authenticated: false, message: 'Invalid credentials' });
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
   it.each(['unavailable', 'timeout', 'throw'] as const)(
-    'returns redacted 503 instead of authenticating when the audit publisher reports %s',
+    'responds with redacted 503 for accepted credentials when the audit publisher reports %s',
     async (failure) => {
       if (failure === 'throw') {
         vi.spyOn(publisher, 'publish').mockRejectedValueOnce(new Error('private stdout failure detail'));
@@ -183,10 +201,16 @@ describe('opt-in demo credential check over HTTP', () => {
     const response = await request(jwtApp.getHttpServer()).post('/graphql').send({ query: '{ me { userId } }' });
     expect(response.status).toBe(401);
     expect(response.body).toEqual({ statusCode: 401, message: 'Unauthenticated' });
-    expect(logger.error).toHaveBeenCalledWith('audit.emit.failed', {
-      audit_event_id: anyString,
-      failure_reason: 'unavailable',
-    });
+    expect(logger.error).toHaveBeenCalledWith(
+      'audit.emit.failed',
+      expect.objectContaining({
+        audit_event_id: anyString,
+        request_id: anyString,
+        auth_boundary: 'graphql',
+        auth_status_id: 2,
+        failure_reason: 'unavailable',
+      }),
+    );
     expect(logger.info).not.toHaveBeenCalled();
   });
 });
