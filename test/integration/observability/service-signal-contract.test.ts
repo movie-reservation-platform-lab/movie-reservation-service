@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { FakeAuditPublisher } from '@movie-reservation-platform-lab/audit-sdk/testing';
 import type { INestApplication } from '@nestjs/common';
 import { context, metrics, propagation, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
@@ -18,9 +19,19 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AppModuleOptions } from '../../../src/app.module';
 import type { AuthenticationAuditRecorder } from '../../../src/application/audit/ports/authentication-audit-recorder';
 import type { ReservationRequestProcessor } from '../../../src/application/movie-reservations/ports/reservation-request-processor';
+// Type-only: the runtime modules are imported after the test MeterProvider is registered.
+import type * as MeteredPublisherModule from '../../../src/infrastructure/audit/metered-audit-publisher';
+import type * as RecorderModule from '../../../src/infrastructure/audit/request-authentication-audit-recorder';
+import type * as AuditPublishMetricsModule from '../../../src/infrastructure/observability/metrics/audit-publish-metrics';
 
 interface AppFactoryModule {
   createApp(options?: AppModuleOptions): Promise<INestApplication>;
+}
+
+interface MeteredAuditModules {
+  readonly recorder: typeof RecorderModule;
+  readonly metered: typeof MeteredPublisherModule;
+  readonly metrics: typeof AuditPublishMetricsModule;
 }
 
 interface MovieReservationTokensModule {
@@ -73,11 +84,16 @@ describe('reservation service emitted signal contract', () => {
     propagation.setGlobalPropagator(new W3CTraceContextPropagator());
 
     const appFactoryModule = (await import('../../../src/app.js')) as unknown as AppFactoryModule;
+    const auditModules: MeteredAuditModules = {
+      recorder: await import('../../../src/infrastructure/audit/request-authentication-audit-recorder.js'),
+      metered: await import('../../../src/infrastructure/audit/metered-audit-publisher.js'),
+      metrics: await import('../../../src/infrastructure/observability/metrics/audit-publish-metrics.js'),
+    };
 
     successfulApp = await appFactoryModule.createApp({
       authMode: 'local-fixed-user',
       reservationWorkerMode: 'disabled',
-      authenticationAuditRecorder: createAcceptingAuditRecorder(),
+      authenticationAuditRecorder: createMeteredAuditRecorder(auditModules),
       demoAuth: { enabled: true, username: 'test-user', password: 'test-password' },
     });
     failingApp = await appFactoryModule.createApp({
@@ -195,6 +211,23 @@ describe('reservation service emitted signal contract', () => {
     );
     expect(findPointValue(graphqlTotal, { business_operation: 'requestReservation', outcome: 'auth_error' })).toBe(0);
 
+    const auditTotal = requireMetric(exports, 'audit_publish_total');
+    expect(auditTotal.descriptor.unit).toBe('');
+    const auditBase = { audit_publisher: 'stdout', audit_publisher_role: 'required' };
+    expect(findPointValue(auditTotal, { ...auditBase, result: 'accepted', failure_reason: 'none' })).toBe(2);
+    expect(findPointValue(auditTotal, { ...auditBase, result: 'failed', failure_reason: 'timeout' })).toBe(0);
+    for (const point of auditTotal.dataPoints) {
+      expect(Object.keys(point.attributes).sort()).toEqual([
+        'audit_publisher',
+        'audit_publisher_role',
+        'failure_reason',
+        'result',
+      ]);
+    }
+    const auditDuration = requireMetric(exports, 'audit_publish_duration_ms');
+    expect(auditDuration.descriptor.unit).toBe('ms');
+    expect(sumHistogramCounts(auditDuration.dataPoints)).toBe(2);
+
     const workerTotal = requireMetric(exports, 'reservation_processor_outcome_total');
     expect(findPointValue(workerTotal, { outcome: 'confirmed' })).toBe(1);
     expect(findPointValue(workerTotal, { outcome: 'retryable-failure' })).toBe(1);
@@ -214,6 +247,16 @@ describe('reservation service emitted signal contract', () => {
     expect(workerSpans[0]?.status.code).not.toBe(workerSpans[1]?.status.code);
   }, 20_000);
 });
+
+/** Real recorder and metered publisher (bound to this test's MeterProvider) over an in-memory transport. */
+function createMeteredAuditRecorder(modules: MeteredAuditModules): AuthenticationAuditRecorder {
+  modules.metrics.initializeAuditPublishMetricSeries('stdout', 'required');
+  return new modules.recorder.RequestAuthenticationAuditRecorder(
+    { serviceName: 'movie-reservation-service', serviceVersion: 'signal-contract-test', environment: 'test' },
+    new modules.metered.MeteredAuditPublisher(new FakeAuditPublisher(), { publisher: 'stdout', role: 'required' }),
+    { info: () => undefined, error: () => undefined },
+  );
+}
 
 function createAcceptingAuditRecorder(): AuthenticationAuditRecorder {
   return {
