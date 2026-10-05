@@ -95,13 +95,13 @@ type AuditPublisherSettings =
     };
 ```
 
-| Rule                                                                                    | Reason                                                                                                                                                   |
-| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUDIT_PUBLISHER` defaults to `stdout`                                                  | Local, test and existing deployments are unchanged.                                                                                                      |
-| `eventbridge` requires `AUDIT_EVENT_BUS_ARN`                                            | Fail at startup, not on the first login. The SDK constructor validates the exact ARN shape during composition, so startup also fails on a malformed ARN. |
-| `AUDIT_PUBLISH_TIMEOUT_MS` is an integer in 100–5000 (default 1000)                     | Same bounds and default as infra; narrower than the SDK's 1–30,000.                                                                                      |
-| Under `stdout`, the EventBridge variables and the mirror flag are ignored, not rejected | Rollback is flipping `AUDIT_PUBLISHER` alone. Infra always injects the other three; rejecting them would stop the rolled-back task from starting.        |
-| Stdout stays allowed in production                                                      | 8a decision: it is the rollback lever until roadmap PR 10/11.                                                                                            |
+| Rule                                                                                                                                | Reason                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUDIT_PUBLISHER` defaults to `stdout`                                                                                              | Local, test and existing deployments are unchanged.                                                                                                      |
+| `eventbridge` requires `AUDIT_EVENT_BUS_ARN`                                                                                        | Fail at startup, not on the first login. The SDK constructor validates the exact ARN shape during composition, so startup also fails on a malformed ARN. |
+| `AUDIT_PUBLISH_TIMEOUT_MS` is an integer in 100–5000 (default 1000)                                                                 | Same bounds and default as infra; narrower than the SDK's 1–30,000.                                                                                      |
+| Under `stdout`, the bus ARN and the mirror flag are ignored, not rejected; a present timeout must still be a valid 100–5000 integer | Rollback is flipping `AUDIT_PUBLISHER` alone. Infra always injects the other three; rejecting them would stop the rolled-back task from starting.        |
+| Stdout stays allowed in production                                                                                                  | 8a decision: it is the rollback lever until roadmap PR 10/11.                                                                                            |
 
 Startup logs `audit.publisher.selected` with the publisher, mirror flag and timeout, but not the ARN (it contains the audit account ID).
 
@@ -132,7 +132,7 @@ Rust analogy: a struct holding two `Box<dyn AuditPublisher>` that itself impleme
 | `audit_publish_total` (counter)         | `audit_publisher` (`stdout`/`eventbridge`), `audit_publisher_role` (`required`/`mirror`), `result` (`accepted`/`failed`), `failure_reason` (SDK reason or `none`) |
 | `audit_publish_duration_ms` (histogram) | `audit_publisher`, `audit_publisher_role`, `result`                                                                                                               |
 
-A thrown publisher error is counted as `failed`/`unavailable` and rethrown, so the wrapper never changes behavior. Series are pre-created like `initializeGraphqlOperationMetricSeries`. Metrics live in the service, not the SDK, which keeps OpenTelemetry out of the SDK.
+A thrown publisher error is counted as `failed`/`unavailable` and rethrown, so the wrapper never changes behavior. Zero series are pre-created by the composition root for each configured publisher and role. Metrics live in the service, not the SDK, which keeps OpenTelemetry out of the SDK.
 
 ### 6.5 No no-op publisher
 
@@ -190,17 +190,17 @@ None.
 
 ## 12. Implementation Steps
 
-| Step | Change                                                                                                        | Files                                                                                                                                                        | Owner        |
-| ---- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
-| 1    | GraphQL TODO marker (#50); record the §10 decision in the 8a plan                                             | `graphql-authentication.middleware.ts`, `docs/plans/issue-46-audit-sdk-integration.md`                                                                       | AI (done)    |
-| 1b   | Fail open in `DemoLoginService` with `TODO(movie-platform-infra#76)`; controller drops the 503 mapping; tests | `demo-login.service.ts`, `demo-auth.controller.ts`, `demo-auth.test.ts`, `service-signal-contract.test.ts`, `docs/audit-authentication-demo.md`              | AI (done)    |
-| 2    | SDK factory, `0.1.2`, re-pin, tests with a stubbed client (Region from ARN, `maxAttempts: 1`)                 | `packages/audit-sdk/src/eventbridge/**`, `packages/audit-sdk/test/eventbridge/**`, SDK README, root `package.json`, lockfile                                 | AI           |
-| 3    | Config union and validation                                                                                   | `src/config.ts`, `test/unit/config/audit-publisher-config.test.ts`                                                                                           | AI           |
-| 4    | `MeteredAuditPublisher` + audit metric series                                                                 | `src/infrastructure/audit/metered-audit-publisher.ts`, `src/infrastructure/observability/metrics/audit-publish-metrics.ts`, unit tests, signal-contract test | AI           |
-| 5    | `StdoutComparisonMirrorAuditPublisher`                                                                        | `src/infrastructure/audit/stdout-comparison-mirror-audit-publisher.ts`, unit test                                                                            | **Engineer** |
-| 6    | Composition: `createAuditPublisher(settings, deps)`; recorder factory uses it; startup log                    | `src/di/audit/**`, `test/unit/infrastructure/create-audit-publisher.test.ts`                                                                                 | AI           |
-| 7    | Outcome matrix with EventBridge through the HTTP stack, using a fake `EventBridgeClientLike`                  | `test/integration/api/demo-auth.test.ts` (or a sibling file)                                                                                                 | AI           |
-| 8    | Docs                                                                                                          | `docs/audit-authentication-demo.md`, SDK README                                                                                                              | AI           |
+| Step | Change                                                                                                        | Files                                                                                                                                                        | Owner                     |
+| ---- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| 1    | GraphQL TODO marker (#50); record the §10 decision in the 8a plan                                             | `graphql-authentication.middleware.ts`, `docs/plans/issue-46-audit-sdk-integration.md`                                                                       | AI (done)                 |
+| 1b   | Fail open in `DemoLoginService` with `TODO(movie-platform-infra#76)`; controller drops the 503 mapping; tests | `demo-login.service.ts`, `demo-auth.controller.ts`, `demo-auth.test.ts`, `service-signal-contract.test.ts`, `docs/audit-authentication-demo.md`              | AI (done)                 |
+| 2    | SDK factory, `0.1.2`, re-pin, tests with a stubbed client (Region from ARN, `maxAttempts: 1`)                 | `packages/audit-sdk/src/eventbridge/**`, `packages/audit-sdk/test/eventbridge/**`, SDK README, root `package.json`, lockfile                                 | AI (done)                 |
+| 3    | Config union and validation                                                                                   | `src/config.ts`, `test/unit/config/audit-publisher-config.test.ts`                                                                                           | AI (done)                 |
+| 4    | `MeteredAuditPublisher` + audit metric series                                                                 | `src/infrastructure/audit/metered-audit-publisher.ts`, `src/infrastructure/observability/metrics/audit-publish-metrics.ts`, unit tests, signal-contract test | AI (done)                 |
+| 5    | `StdoutComparisonMirrorAuditPublisher`                                                                        | `src/infrastructure/audit/stdout-comparison-mirror-audit-publisher.ts`, unit test                                                                            | **Engineer** (scaffolded) |
+| 6    | Composition: `createAuditPublisher(settings, deps)`; recorder factory uses it; startup log                    | `src/di/audit/**`, `test/unit/infrastructure/create-audit-publisher.test.ts`                                                                                 | AI (done)                 |
+| 7    | Outcome matrix with EventBridge through the HTTP stack, using a fake `EventBridgeClientLike`                  | `test/integration/api/demo-auth-eventbridge.test.ts`; image smoke builds the real client                                                                     | AI (done)                 |
+| 8    | Docs                                                                                                          | `docs/audit-authentication-demo.md`, SDK README                                                                                                              | AI (done)                 |
 
 ## 13. Testing Strategy
 
@@ -242,13 +242,17 @@ None.
 Learning target: the decorator pattern for ports (Rust: a struct that holds two
   `Box<dyn AuditPublisher>` and also implements it), and how `try/finally` in an
   async function keeps a side effect from changing the primary result.
-Engineer owns: StdoutComparisonMirrorAuditPublisher and its unit tests.
+Engineer owns: StdoutComparisonMirrorAuditPublisher (scaffolded: class, contract,
+  constructor; publish() rejects until implemented) and its tests.
   1. Write failing tests with two SDK FakeAuditPublisher instances:
      required accepted + mirror failing -> accepted;
      required failed -> same failed result, mirror still called;
      required throwing -> same error, mirror still called;
      both receive the identical event object.
   2. Implement publish() so only the required publisher decides the result.
+  3. Add the composition case to test/unit/infrastructure/create-audit-publisher.test.ts:
+     eventbridge + mirror -> EventBridge decides the result, stdout receives
+     the identical event object.
 Done evidence: the tests fail first, then pass; `npm run check` is green.
 Support level: guided
 ```

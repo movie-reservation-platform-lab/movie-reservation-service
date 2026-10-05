@@ -11,11 +11,33 @@ For every accepted or rejected credential check, the service writes:
 HTTP request
   -> validate and compare credentials
   -> build an OCSF Authentication event (audit SDK)
-  -> await the audit publisher: stdout {"audit": <event>}
-  -> FireLens / Fluent Bit -> Firehose -> S3 -> Athena
+  -> await the configured audit publisher (AUDIT_PUBLISHER):
+       stdout:      {"audit": <event>} -> FireLens / Fluent Bit -> Firehose -> S3
+       eventbridge: PutEvents (bounded timeout) -> central bus -> Firehose -> Security Lake
+                    (+ optional best-effort stdout comparison mirror)
 ```
 
-Only the first three steps run in this repository. AWS resources, routing,
+Only the first three steps run in this repository.
+
+## Audit publisher configuration
+
+| Variable                         | Default  | Meaning                                                                                                     |
+| -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `AUDIT_PUBLISHER`                | `stdout` | `stdout` or `eventbridge`.                                                                                  |
+| `AUDIT_EVENT_BUS_ARN`            | —        | Exact custom-bus ARN; required for `eventbridge`. The client Region comes from it.                          |
+| `AUDIT_PUBLISH_TIMEOUT_MS`       | `1000`   | Integer, 100–5000; bounds the whole publish. One attempt, no retries.                                       |
+| `AUDIT_STDOUT_COMPARISON_MIRROR` | `false`  | With `eventbridge`, also writes the same event to stdout best-effort (temporary, removed by roadmap PR 10). |
+
+Under `stdout` the other three are ignored, so rolling back from EventBridge only
+means setting `AUDIT_PUBLISHER=stdout`. A missing or malformed bus ARN stops the
+service at startup. Startup logs `audit.publisher.selected` without the ARN.
+Credentials come from the AWS default chain (the ECS task role in AWS).
+
+Every publish is counted in `audit_publish_total` (`audit_publisher`,
+`audit_publisher_role` = `required`/`mirror`, `result`, `failure_reason`) and
+timed in `audit_publish_duration_ms`. Because authentication fails open (see
+below), failures of the `required` publisher are the alerting signal for
+unaudited logins. AWS resources, routing,
 deployment and teardown instructions belong to
 [movie-platform-infra](https://github.com/movie-reservation-platform-lab/movie-platform-infra/issues/43).
 
@@ -119,8 +141,10 @@ submitted username. Failure details come from a fixed allowlist.
 - `src/application/audit/`: authentication attempt/outcome types and the async
   recorder port. It does not import the SDK.
 - `src/infrastructure/audit/`: maps attempts plus request/trace context into the
-  SDK builder, and a `StdoutAuditPublisher` implementing the SDK publisher port.
-- `src/di/audit/`: composes the recorder with the stdout publisher.
+  SDK builder; `StdoutAuditPublisher`, the metering decorator and the stdout
+  comparison mirror implement the SDK publisher port.
+- `src/di/audit/`: builds the configured publisher graph (the SDK factory builds
+  the EventBridge client) and composes the recorder.
 - `src/application/authentication/demo-login.service.ts`: input checks and result.
 - `src/infrastructure/authentication/demo-credential-verifier.ts`: fixed-size
   digest comparisons with `timingSafeEqual`; both username and password are checked.
@@ -144,8 +168,8 @@ the affected request and trace. It is operational telemetry, not a replacement
 audit record: it omits the OCSF body, and while stdout is the publisher it shares
 the output that just failed.
 The returned event ID identifies the generated event, not proof of archival.
-Stdout acceptance is deliberately weaker than the EventBridge acceptance planned
-for PR 8b. Authentication fails open on an unaccepted audit event: an accepted
+Stdout acceptance is deliberately weaker than EventBridge acceptance, which is an
+acknowledgement from the bus but still not proof of archival. Authentication fails open on an unaccepted audit event: an accepted
 demo login returns 200 without a receipt, so it can exist with no audit record
 and only the operational log as a trace; rejected demo credentials and GraphQL
 authentication rejections stay 401. A callback can report a write error after a response was
@@ -170,10 +194,12 @@ npm run build
 Unit tests check the generated OCSF objects against the shared schema, raw stdout
 format and concurrent trace context. HTTP tests cover disabled/malformed/wrong/
 successful checks, secret redaction and unchanged GraphQL behavior. Schema
-validation comes from the SDK. The service does not call AWS yet; the SDK's
-EventBridge adapter is installed but not composed until PR 8b.
+validation comes from the SDK. The EventBridge path is tested through HTTP with
+the SDK publisher over a fake AWS client (accepted, partial failure, throttling,
+access denied, timeout); the SDK tests drive the real AWS client against a local
+`PutEvents` stub. No test calls AWS.
 `npm run smoke:image:audit-sdk` loads the SDK and its on-disk schema inside the
-built production image.
+built production image and constructs the real EventBridge client there.
 A process-level test starts the real instrumentation bootstrap and verifies that
 the span referenced in the audit event reaches a local OTLP collector.
 
