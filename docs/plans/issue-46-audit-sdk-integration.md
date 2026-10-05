@@ -73,7 +73,7 @@ Done evidence: the new test fails first, then passes; the existing 503 cases
 Support level: guided
 ```
 
-Follow-up: the GraphQL middleware makes the same "rejection beats audit failure" decision in presentation. Align it with the application-layer policy, or record why it differs.
+Follow-up: the GraphQL middleware makes the same "rejection beats audit failure" decision in presentation. It moves to the application layer together with auditing verified GraphQL successes (#50); until then the middleware only audits rejections, so it never faces the fail-closed choice.
 
 ## 8. Testing Strategy
 
@@ -92,11 +92,29 @@ Follow-up: the GraphQL middleware makes the same "rejection beats audit failure"
 | Image missing SDK files                             | In-image smoke in `container-security-check`.                                                    |
 | Stdout contract drift through the SDK               | Byte-exact fixture test against `test/fixtures/audit/platform-audit-contract-v1.json`.           |
 
-## 10. Open Question Before PR 8b
+## 10. Decision Before PR 8b (resolved 2026-10-05)
 
-Whether _successful_ authentication should block on remote audit acceptance (current roadmap §6.3: fail closed with a bounded timeout), or block only on a durable **local** write that is relayed asynchronously (outbox/spool pattern). Decide this before EventBridge becomes the required publisher. Until then, 8a keeps today's fail-closed behavior on local stdout acceptance.
+Question: should _successful_ authentication block on remote audit acceptance
+(roadmap §6.3: fail closed with a bounded timeout), or only on a durable
+**local** write relayed asynchronously (outbox/spool)?
 
-A replayable fallback for unaccepted events belongs to that decision, not to
+Decisions (engineer, 2026-10-05):
+
+- **Target:** the outbox. Successful authentication should eventually wait
+  only for a durable local write that a relay forwards to EventBridge
+  (evaluated in movie-platform-infra#76). It is not built in 8b.
+- **Prepare the seam now:** `AuditReceipt` keeps meaning "a durable store
+  accepted this event", so the outbox later replaces the publisher behind the
+  same port without changing `DemoLoginService` or the recorder.
+- **Interim behavior until the outbox exists:** fail closed. Without a local
+  durable store, that means a successful login waits for EventBridge
+  acceptance within `AUDIT_PUBLISH_TIMEOUT_MS` and returns 503 otherwise.
+  Removing that wait is the outbox's job. No retries in the request path
+  (proposed with the 8b plan).
+
+See `docs/plans/issue-51-audit-publisher-selection.md`.
+
+A replayable fallback for unaccepted events belongs to the outbox, not to
 operational logs. 8a only makes `audit.emit.failed` carry the same correlation
 fields as `audit.authentication`, so a failed publish stays traceable without
 creating a second, unofficial audit trail.
