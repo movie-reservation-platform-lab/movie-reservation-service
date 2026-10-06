@@ -41,9 +41,9 @@ export class DemoLoginService {
    * the failure for alerting.
    *
    * TODO(movie-platform-infra#76): put a durable local audit write (transactional
-   * outbox, relayed to EventBridge) behind the recorder, so successful logins are
-   * audited without waiting for EventBridge. Then revisit failing closed when
-   * that local write fails.
+   *  outbox, relayed to EventBridge) behind the recorder, so successful logins are
+   *  audited without waiting for EventBridge. Then revisit failing closed when
+   *  that local write fails.
    */
   async login(body: unknown): Promise<DemoLoginResult> {
     const outcome = this.authenticate(body);
