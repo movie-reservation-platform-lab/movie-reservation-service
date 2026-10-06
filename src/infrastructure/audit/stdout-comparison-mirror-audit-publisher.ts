@@ -1,27 +1,36 @@
-import type { AuditPublishResult, AuditPublisher } from '@movie-reservation-platform-lab/audit-sdk/core';
+import type {
+  AuditPublishOptions,
+  AuditPublishResult,
+  AuditPublisher,
+  AuthenticationAuditEvent,
+} from '@movie-reservation-platform-lab/audit-sdk/core';
 
 /**
- * Temporary comparison decorator (removed by roadmap PR 10): the required
+ * Temporary comparison decorator (removed by roadmap PR 10): the primary
  * publisher decides the result, and the same already-built event is copied to
- * the mirror best-effort.
+ * the comparison publisher best-effort.
  *
  * Contract:
- * - Returns the required publisher's result, or rethrows its error, unchanged.
- * - Always calls the mirror with the identical event object afterwards, also
- *   when the required publish failed or threw.
- * - A mirror result or error never changes what is returned or thrown.
+ * - Returns the primary publisher's result, or rethrows its error, unchanged.
+ * - Always calls the comparison publisher with the identical event object
+ *   afterwards, including when the primary publish failed or threw.
+ * - A comparison result or error never changes what is returned or thrown.
  */
 export class StdoutComparisonMirrorAuditPublisher implements AuditPublisher {
   constructor(
-    private readonly required: AuditPublisher,
-    private readonly mirror: AuditPublisher,
+    private readonly primaryPublisher: AuditPublisher,
+    private readonly comparisonPublisher: AuditPublisher,
   ) {}
 
-  // TODO(#51 step 5, engineer slice): implement the contract above, test-first,
-  // with the signature publish(event: AuthenticationAuditEvent, options?: AuditPublishOptions).
-  publish(): Promise<AuditPublishResult> {
-    void this.required;
-    void this.mirror;
-    return Promise.reject(new Error('StdoutComparisonMirrorAuditPublisher is not implemented yet'));
+  async publish(event: AuthenticationAuditEvent, options?: AuditPublishOptions): Promise<AuditPublishResult> {
+    try {
+      return await this.primaryPublisher.publish(event, options);
+    } finally {
+      try {
+        await this.comparisonPublisher.publish(event, options);
+      } catch {
+        // A best-effort comparison failure must not replace the primary result or error.
+      }
+    }
   }
 }

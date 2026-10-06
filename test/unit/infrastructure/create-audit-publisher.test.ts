@@ -52,6 +52,23 @@ describe('createAuditPublisher', () => {
     expect(stdout.publishedEvents).toEqual([]);
   });
 
+  it('uses EventBridge as primary and sends the identical event to the stdout comparison publisher', async () => {
+    const { stdout, eventBridge, dependencies } = fakeDependencies();
+    eventBridge.enqueue({ accepted: false, reason: 'timeout' });
+
+    const result = await createAuditPublisher(
+      { publisher: 'eventbridge', eventBusArn, timeoutMs: 250, stdoutComparisonMirror: true },
+      dependencies,
+    ).publish(event);
+
+    expect(result).toEqual({ accepted: false, auditEventId: event.metadata.uid, reason: 'timeout' });
+    // Exactly one publish each, and the identical object (not a rebuilt event) reaches both.
+    expect(eventBridge.publishedEvents).toHaveLength(1);
+    expect(stdout.publishedEvents).toHaveLength(1);
+    expect(eventBridge.publishedEvents[0]).toBe(event);
+    expect(stdout.publishedEvents[0]).toBe(event);
+  });
+
   it('fails at composition, not on the first login, for a malformed bus ARN', () => {
     expect(() =>
       createAuditPublisher({

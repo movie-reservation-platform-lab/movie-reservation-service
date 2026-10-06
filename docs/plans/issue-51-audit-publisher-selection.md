@@ -115,7 +115,7 @@ Add `createEventBridgeAuditPublisher({ eventBusArn, timeoutMs })` to the SDK `ev
 
 ### 6.3 Comparison mirror
 
-`StdoutComparisonMirrorAuditPublisher(required, mirror)` implements `AuditPublisher`:
+`StdoutComparisonMirrorAuditPublisher(primaryPublisher, comparisonPublisher)` implements `AuditPublisher` (the required and mirror publishers):
 
 - Awaits `required.publish(event)` and returns its result (or rethrows its error) unchanged.
 - In a `finally`, calls `mirror.publish(event)` with the same event object, catching and discarding any result or error. The stdout publisher already reports its own failures (`audit.stdout.failed`), and the metered wrapper counts them.
@@ -190,17 +190,17 @@ None.
 
 ## 12. Implementation Steps
 
-| Step | Change                                                                                                        | Files                                                                                                                                                        | Owner                     |
-| ---- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
-| 1    | GraphQL TODO marker (#50); record the §10 decision in the 8a plan                                             | `graphql-authentication.middleware.ts`, `docs/plans/issue-46-audit-sdk-integration.md`                                                                       | AI (done)                 |
-| 1b   | Fail open in `DemoLoginService` with `TODO(movie-platform-infra#76)`; controller drops the 503 mapping; tests | `demo-login.service.ts`, `demo-auth.controller.ts`, `demo-auth.test.ts`, `service-signal-contract.test.ts`, `docs/audit-authentication-demo.md`              | AI (done)                 |
-| 2    | SDK factory, `0.1.2`, re-pin, tests with a stubbed client (Region from ARN, `maxAttempts: 1`)                 | `packages/audit-sdk/src/eventbridge/**`, `packages/audit-sdk/test/eventbridge/**`, SDK README, root `package.json`, lockfile                                 | AI (done)                 |
-| 3    | Config union and validation                                                                                   | `src/config.ts`, `test/unit/config/audit-publisher-config.test.ts`                                                                                           | AI (done)                 |
-| 4    | `MeteredAuditPublisher` + audit metric series                                                                 | `src/infrastructure/audit/metered-audit-publisher.ts`, `src/infrastructure/observability/metrics/audit-publish-metrics.ts`, unit tests, signal-contract test | AI (done)                 |
-| 5    | `StdoutComparisonMirrorAuditPublisher`                                                                        | `src/infrastructure/audit/stdout-comparison-mirror-audit-publisher.ts`, unit test                                                                            | **Engineer** (scaffolded) |
-| 6    | Composition: `createAuditPublisher(settings, deps)`; recorder factory uses it; startup log                    | `src/di/audit/**`, `test/unit/infrastructure/create-audit-publisher.test.ts`                                                                                 | AI (done)                 |
-| 7    | Outcome matrix with EventBridge through the HTTP stack, using a fake `EventBridgeClientLike`                  | `test/integration/api/demo-auth-eventbridge.test.ts`; image smoke builds the real client                                                                     | AI (done)                 |
-| 8    | Docs                                                                                                          | `docs/audit-authentication-demo.md`, SDK README                                                                                                              | AI (done)                 |
+| Step | Change                                                                                                        | Files                                                                                                                                                        | Owner               |
+| ---- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
+| 1    | GraphQL TODO marker (#50); record the §10 decision in the 8a plan                                             | `graphql-authentication.middleware.ts`, `docs/plans/issue-46-audit-sdk-integration.md`                                                                       | AI (done)           |
+| 1b   | Fail open in `DemoLoginService` with `TODO(movie-platform-infra#76)`; controller drops the 503 mapping; tests | `demo-login.service.ts`, `demo-auth.controller.ts`, `demo-auth.test.ts`, `service-signal-contract.test.ts`, `docs/audit-authentication-demo.md`              | AI (done)           |
+| 2    | SDK factory, `0.1.2`, re-pin, tests with a stubbed client (Region from ARN, `maxAttempts: 1`)                 | `packages/audit-sdk/src/eventbridge/**`, `packages/audit-sdk/test/eventbridge/**`, SDK README, root `package.json`, lockfile                                 | AI (done)           |
+| 3    | Config union and validation                                                                                   | `src/config.ts`, `test/unit/config/audit-publisher-config.test.ts`                                                                                           | AI (done)           |
+| 4    | `MeteredAuditPublisher` + audit metric series                                                                 | `src/infrastructure/audit/metered-audit-publisher.ts`, `src/infrastructure/observability/metrics/audit-publish-metrics.ts`, unit tests, signal-contract test | AI (done)           |
+| 5    | `StdoutComparisonMirrorAuditPublisher`                                                                        | `src/infrastructure/audit/stdout-comparison-mirror-audit-publisher.ts`, unit test                                                                            | **Engineer** (done) |
+| 6    | Composition: `createAuditPublisher(settings, deps)`; recorder factory uses it; startup log                    | `src/di/audit/**`, `test/unit/infrastructure/create-audit-publisher.test.ts`                                                                                 | AI (done)           |
+| 7    | Outcome matrix with EventBridge through the HTTP stack, using a fake `EventBridgeClientLike`                  | `test/integration/api/demo-auth-eventbridge.test.ts`; image smoke builds the real client                                                                     | AI (done)           |
+| 8    | Docs                                                                                                          | `docs/audit-authentication-demo.md`, SDK README                                                                                                              | AI (done)           |
 
 ## 13. Testing Strategy
 
