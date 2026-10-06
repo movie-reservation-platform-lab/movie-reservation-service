@@ -3,8 +3,8 @@ import type { AuditPublishFailureReason } from '@movie-reservation-platform-lab/
 import { serviceMeter } from './otel-meter';
 
 export type AuditPublisherName = 'stdout' | 'eventbridge';
-/** `required` decides the audit result; `mirror` is the temporary best-effort comparison copy. */
-export type AuditPublisherRole = 'required' | 'mirror';
+/** `primary` decides the audit result; `comparison` is the temporary best-effort copy. */
+export type AuditPublisherRole = 'primary' | 'comparison';
 
 export interface AuditPublishSample {
   readonly publisher: AuditPublisherName;

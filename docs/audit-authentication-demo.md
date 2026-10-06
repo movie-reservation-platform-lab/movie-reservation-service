@@ -34,9 +34,9 @@ service at startup. Startup logs `audit.publisher.selected` without the ARN.
 Credentials come from the AWS default chain (the ECS task role in AWS).
 
 Every publish is counted in `audit_publish_total` (`audit_publisher`,
-`audit_publisher_role` = `required`/`mirror`, `result`, `failure_reason`) and
+`audit_publisher_role` = `primary`/`comparison`, `result`, `failure_reason`) and
 timed in `audit_publish_duration_ms`. Because authentication fails open (see
-below), failures of the `required` publisher are the alerting signal for
+below), failures of the `primary` publisher are the alerting signal for
 unaudited logins. AWS resources, routing,
 deployment and teardown instructions belong to
 [movie-platform-infra](https://github.com/movie-reservation-platform-lab/movie-platform-infra/issues/43).

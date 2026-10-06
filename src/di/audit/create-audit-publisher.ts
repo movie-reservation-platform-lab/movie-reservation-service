@@ -23,9 +23,9 @@ export interface AuditPublisherDependencies {
 /**
  * Builds the configured publisher graph; every publisher is metered:
  *
- * - `stdout`: stdout (required)
- * - `eventbridge`: EventBridge (required)
- * - `eventbridge` + mirror: EventBridge (required), then stdout (mirror)
+ * - `stdout`: stdout (primary)
+ * - `eventbridge`: EventBridge (primary)
+ * - `eventbridge` + mirror: EventBridge (primary), then stdout (comparison)
  *
  * An invalid bus ARN throws `AuditPublisherConfigurationError` here, so the
  * service fails at startup rather than on the first login.
@@ -35,23 +35,28 @@ export function createAuditPublisher(
   dependencies: AuditPublisherDependencies = defaultAuditPublisherDependencies(),
 ): AuditPublisher {
   if (settings.publisher === 'stdout') {
-    return metered(dependencies.stdout, 'stdout', 'required');
+    return metered(dependencies.stdout, 'stdout', 'primary');
   }
 
-  const required = metered(
+  const primaryPublisher = metered(
     dependencies.createEventBridge({ eventBusArn: settings.eventBusArn, timeoutMs: settings.timeoutMs }),
     'eventbridge',
-    'required',
+    'primary',
   );
   if (!settings.stdoutComparisonMirror) {
-    return required;
+    return primaryPublisher;
   }
-  return new StdoutComparisonMirrorAuditPublisher(required, metered(dependencies.stdout, 'stdout', 'mirror'));
+  const comparisonPublisher = metered(dependencies.stdout, 'stdout', 'comparison');
+  return new StdoutComparisonMirrorAuditPublisher(primaryPublisher, comparisonPublisher);
 }
 
-function metered(inner: AuditPublisher, publisher: AuditPublisherName, role: AuditPublisherRole): AuditPublisher {
+function metered(
+  innerPublisher: AuditPublisher,
+  publisher: AuditPublisherName,
+  role: AuditPublisherRole,
+): AuditPublisher {
   initializeAuditPublishMetricSeries(publisher, role);
-  return new MeteredAuditPublisher(inner, { publisher, role });
+  return new MeteredAuditPublisher(innerPublisher, { publisher, role });
 }
 
 function defaultAuditPublisherDependencies(): AuditPublisherDependencies {

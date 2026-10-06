@@ -15,7 +15,7 @@ function createMeteredPublisher(inner: FakeAuditPublisher) {
   const times = [10, 35];
   const publisher = new MeteredAuditPublisher(
     inner,
-    { publisher: 'eventbridge', role: 'required' },
+    { publisher: 'eventbridge', role: 'primary' },
     (sample) => samples.push(sample),
     () => times.shift() ?? 0,
   );
@@ -32,7 +32,7 @@ describe('MeteredAuditPublisher', () => {
     expect(result).toEqual({ accepted: true, auditEventId: event.metadata.uid, transportEventId: 'fake-event-0001' });
     expect(inner.publishedEvents).toEqual([event]);
     expect(samples).toEqual([
-      { publisher: 'eventbridge', role: 'required', outcome: { accepted: true }, durationMs: 25 },
+      { publisher: 'eventbridge', role: 'primary', outcome: { accepted: true }, durationMs: 25 },
     ]);
   });
 
@@ -47,7 +47,7 @@ describe('MeteredAuditPublisher', () => {
 
       expect(result).toEqual({ accepted: false, auditEventId: event.metadata.uid, reason });
       expect(samples).toEqual([
-        { publisher: 'eventbridge', role: 'required', outcome: { accepted: false, reason }, durationMs: 25 },
+        { publisher: 'eventbridge', role: 'primary', outcome: { accepted: false, reason }, durationMs: 25 },
       ]);
     },
   );
@@ -62,7 +62,7 @@ describe('MeteredAuditPublisher', () => {
     expect(samples).toEqual([
       {
         publisher: 'eventbridge',
-        role: 'required',
+        role: 'primary',
         outcome: { accepted: false, reason: 'unavailable' },
         durationMs: 25,
       },

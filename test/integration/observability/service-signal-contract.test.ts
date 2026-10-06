@@ -213,7 +213,7 @@ describe('reservation service emitted signal contract', () => {
 
     const auditTotal = requireMetric(exports, 'audit_publish_total');
     expect(auditTotal.descriptor.unit).toBe('');
-    const auditBase = { audit_publisher: 'stdout', audit_publisher_role: 'required' };
+    const auditBase = { audit_publisher: 'stdout', audit_publisher_role: 'primary' };
     expect(findPointValue(auditTotal, { ...auditBase, result: 'accepted', failure_reason: 'none' })).toBe(2);
     expect(findPointValue(auditTotal, { ...auditBase, result: 'failed', failure_reason: 'timeout' })).toBe(0);
     for (const point of auditTotal.dataPoints) {
@@ -250,10 +250,10 @@ describe('reservation service emitted signal contract', () => {
 
 /** Real recorder and metered publisher (bound to this test's MeterProvider) over an in-memory transport. */
 function createMeteredAuditRecorder(modules: MeteredAuditModules): AuthenticationAuditRecorder {
-  modules.metrics.initializeAuditPublishMetricSeries('stdout', 'required');
+  modules.metrics.initializeAuditPublishMetricSeries('stdout', 'primary');
   return new modules.recorder.RequestAuthenticationAuditRecorder(
     { serviceName: 'movie-reservation-service', serviceVersion: 'signal-contract-test', environment: 'test' },
-    new modules.metered.MeteredAuditPublisher(new FakeAuditPublisher(), { publisher: 'stdout', role: 'required' }),
+    new modules.metered.MeteredAuditPublisher(new FakeAuditPublisher(), { publisher: 'stdout', role: 'primary' }),
     { info: () => undefined, error: () => undefined },
   );
 }

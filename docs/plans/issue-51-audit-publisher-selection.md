@@ -36,7 +36,7 @@ Apart from switching demo login to fail open (§6.0, engineer decision), the app
 
 ### Confirmed Requirements
 
-- Roadmap §6.3 outcome matrix with EventBridge as the required publisher.
+- Roadmap §6.3 outcome matrix with EventBridge as the primary publisher.
 - Prepare the outbox seam: the target design is a durable local write relayed afterwards, so nothing above the publisher may assume the store is remote (engineer decision, 8a plan §10).
 - Until the outbox exists, authentication fails open, plus an alert (engineer decision): an unaccepted audit event never changes the credential decision; the response omits the receipt fields, and `audit.emit.failed` plus publish metrics are the alerting signal. The publish is still awaited within the timeout so an accepted event can return its receipt.
 - No retries in the request path (this plan's proposal, §7 Alternative C).
@@ -60,11 +60,11 @@ DemoLoginService / GraphQL middleware        (fail open, §6.0)
   -> AuthenticationAuditRecorder port         (unchanged)
     -> RequestAuthenticationAuditRecorder     (unchanged: builds one event)
       -> AuditPublisher chosen at composition:
-         stdout:       Metered(Stdout, role=required)
-         eventbridge:  Metered(EventBridge, role=required)
+         stdout:       Metered(Stdout, role=primary)
+         eventbridge:  Metered(EventBridge, role=primary)
          + mirror:     StdoutComparisonMirror(
-                         required = Metered(EventBridge, role=required),
-                         mirror   = Metered(Stdout, role=mirror))
+                         primary    = Metered(EventBridge, role=primary),
+                         comparison = Metered(Stdout, role=comparison))
 ```
 
 ### 6.0 Fail open on an unaccepted audit event
@@ -78,7 +78,7 @@ DemoLoginService / GraphQL middleware        (fail open, §6.0)
 | Rejected    | Yes                  | 401 + receipt                                                |
 | Rejected    | No / timeout / throw | 401, no receipt; `audit.emit.failed` with `auth_status_id=2` |
 
-This deliberately departs from roadmap §6.3 (fail closed with 503). Cost: an accepted login can exist without an audit event, traced only by the operational log, which is not a replayable audit record. `TODO(movie-platform-infra#76)` in `DemoLoginService` marks the outbox that closes the gap. The alarm itself (on `audit_publish_total{audit_publisher_role="required",result="failed"}` and on `audit.emit.failed`) is infra-owned.
+This deliberately departs from roadmap §6.3 (fail closed with 503). Cost: an accepted login can exist without an audit event, traced only by the operational log, which is not a replayable audit record. `TODO(movie-platform-infra#76)` in `DemoLoginService` marks the outbox that closes the gap. The alarm itself (on `audit_publish_total{audit_publisher_role="primary",result="failed"}` and on `audit.emit.failed`) is infra-owned.
 
 ### 6.1 Configuration
 
@@ -115,11 +115,11 @@ Add `createEventBridgeAuditPublisher({ eventBusArn, timeoutMs })` to the SDK `ev
 
 ### 6.3 Comparison mirror
 
-`StdoutComparisonMirrorAuditPublisher(primaryPublisher, comparisonPublisher)` implements `AuditPublisher` (the required and mirror publishers):
+`StdoutComparisonMirrorAuditPublisher(primaryPublisher, comparisonPublisher)` implements `AuditPublisher`:
 
-- Awaits `required.publish(event)` and returns its result (or rethrows its error) unchanged.
-- In a `finally`, calls `mirror.publish(event)` with the same event object, catching and discarding any result or error. The stdout publisher already reports its own failures (`audit.stdout.failed`), and the metered wrapper counts them.
-- Mirrors even when the required publish failed, so the comparison can show events that reached stdout but not EventBridge.
+- Awaits `primaryPublisher.publish(event)` and returns its result (or rethrows its error) unchanged.
+- In a `finally`, calls `comparisonPublisher.publish(event)` with the same event object, catching and discarding any result or error. The stdout publisher already reports its own failures (`audit.stdout.failed`), and the metered wrapper counts them.
+- Mirrors even when the primary publish failed, so the comparison can show events that reached stdout but not EventBridge.
 
 Rust analogy: a struct holding two `Box<dyn AuditPublisher>` that itself implements `AuditPublisher`; Python analogy: a wrapper object with the same `publish` method.
 
@@ -127,10 +127,10 @@ Rust analogy: a struct holding two `Box<dyn AuditPublisher>` that itself impleme
 
 `MeteredAuditPublisher(inner, { publisher, role })` wraps any publisher and records:
 
-| Instrument                              | Attributes                                                                                                                                                        |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `audit_publish_total` (counter)         | `audit_publisher` (`stdout`/`eventbridge`), `audit_publisher_role` (`required`/`mirror`), `result` (`accepted`/`failed`), `failure_reason` (SDK reason or `none`) |
-| `audit_publish_duration_ms` (histogram) | `audit_publisher`, `audit_publisher_role`, `result`                                                                                                               |
+| Instrument                              | Attributes                                                                                                                                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `audit_publish_total` (counter)         | `audit_publisher` (`stdout`/`eventbridge`), `audit_publisher_role` (`primary`/`comparison`), `result` (`accepted`/`failed`), `failure_reason` (SDK reason or `none`) |
+| `audit_publish_duration_ms` (histogram) | `audit_publisher`, `audit_publisher_role`, `result`                                                                                                                  |
 
 A thrown publisher error is counted as `failed`/`unavailable` and rethrown, so the wrapper never changes behavior. Zero series are pre-created by the composition root for each configured publisher and role. Metrics live in the service, not the SDK, which keeps OpenTelemetry out of the SDK.
 
@@ -207,7 +207,7 @@ None.
 - **SDK:** the factory returns a publisher whose client has the ARN's Region and one attempt; invalid config still throws `AuditPublisherConfigurationError`.
 - **Config:** defaults; `eventbridge` without ARN; timeout 99/100/5000/5001/non-integer; stdout with all EventBridge variables set still starts.
 - **Metrics:** accepted, each failure reason, thrown error; attributes exactly the bounded set; the signal-contract test lists the new instruments.
-- **Mirror:** required accepted + mirror fails → accepted; required failed → failed, mirror still called; required throws → rethrown, mirror still called; the same event object reaches both.
+- **Mirror:** primary accepted + comparison fails → accepted; primary failed → failed, comparison still called; primary throws → rethrown, comparison still called; the same event object reaches both.
 - **Composition:** each settings variant produces the expected publisher graph (checked through behavior with fakes, not `instanceof` chains).
 - **Outcome matrix:** accepted/rejected credentials × accepted/`unavailable`/`timeout`/`throttled`/partial failure, with mirror on and off: success always 200 and rejection always 401, with receipt fields only when the event was accepted (§6.0).
 - **Regression:** existing demo-auth, GraphQL, audit-trace and image-smoke tests unchanged and green.
@@ -226,7 +226,7 @@ None.
 | EventBridge outage or throttling leaves successful logins unaudited                           |   High |           Low/Medium | Deliberate interim (fail open, 8a plan §10); `audit.emit.failed` with correlation fields; failure metrics with an infra-owned alarm; outbox in movie-platform-infra#76.      |
 | Invalid-token flood reaches the account `PutEvents` quota (2,400/s default in `eu-central-1`) | Medium |                  Low | Rejections stay 401; throttling visible in metrics; ingress rate limiting is the standard control (infra); quota is adjustable; the outbox removes it from the success path. |
 | Rollback blocked by strict config                                                             |   High | Low without the rule | Ignore EventBridge variables under `stdout`; explicit test.                                                                                                                  |
-| Mirror changes the required result                                                            |   High |                  Low | Decorator contract tests; the required result is returned before mirror errors can surface.                                                                                  |
+| Mirror changes the primary result                                                             |   High |                  Low | Decorator contract tests; the primary result is returned before comparison errors can surface.                                                                               |
 | SDK version bump breaks the CommonJS bridge or image                                          | Medium |                  Low | Existing packed-consumer test, CI artifact hand-off, image smoke.                                                                                                            |
 
 ## 16. Done Criteria
@@ -245,11 +245,11 @@ Learning target: the decorator pattern for ports (Rust: a struct that holds two
 Engineer owns: StdoutComparisonMirrorAuditPublisher (scaffolded: class, contract,
   constructor; publish() rejects until implemented) and its tests.
   1. Write failing tests with two SDK FakeAuditPublisher instances:
-     required accepted + mirror failing -> accepted;
-     required failed -> same failed result, mirror still called;
-     required throwing -> same error, mirror still called;
+     primary accepted + comparison failing -> accepted;
+     primary failed -> same failed result, comparison still called;
+     primary throwing -> same error, comparison still called;
      both receive the identical event object.
-  2. Implement publish() so only the required publisher decides the result.
+  2. Implement publish() so only the primary publisher decides the result.
   3. Add the composition case to test/unit/infrastructure/create-audit-publisher.test.ts:
      eventbridge + mirror -> EventBridge decides the result, stdout receives
      the identical event object.
