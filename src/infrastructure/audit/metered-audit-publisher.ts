@@ -14,12 +14,12 @@ import {
 
 /**
  * Wraps any publisher and records one metric sample per publish. It returns the
- * inner result or rethrows the inner error unchanged; a thrown error is counted
- * as `unavailable`, matching how the recorder treats it.
+ * wrapped publisher's result or rethrows its error unchanged; a thrown error is
+ * counted as `unavailable`, matching how the recorder treats it.
  */
 export class MeteredAuditPublisher implements AuditPublisher {
   constructor(
-    private readonly inner: AuditPublisher,
+    private readonly innerPublisher: AuditPublisher,
     private readonly labels: { readonly publisher: AuditPublisherName; readonly role: AuditPublisherRole },
     private readonly recordSample: (sample: AuditPublishSample) => void = recordAuditPublishMetrics,
     private readonly now: () => number = () => performance.now(),
@@ -28,7 +28,7 @@ export class MeteredAuditPublisher implements AuditPublisher {
   async publish(event: AuthenticationAuditEvent, options?: AuditPublishOptions): Promise<AuditPublishResult> {
     const startedAt = this.now();
     try {
-      const result = await this.inner.publish(event, options);
+      const result = await this.innerPublisher.publish(event, options);
       this.record(result.accepted ? { accepted: true } : { accepted: false, reason: result.reason }, startedAt);
       return result;
     } catch (error) {

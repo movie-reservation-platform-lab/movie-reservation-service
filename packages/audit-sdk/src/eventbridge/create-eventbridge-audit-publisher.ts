@@ -21,7 +21,8 @@ const eventBusRegionPattern = /^arn:[a-z-]+:events:([a-z0-9-]+):/;
  * ECS task role). Call once per process and reuse the publisher.
  */
 export function createEventBridgeAuditPublisher(config: EventBridgeAuditPublisherConfig): EventBridgeAuditPublisher {
-  return new EventBridgeAuditPublisher(createEventBridgeAuditClient(config.eventBusArn), config);
+  const eventBridgeAuditClient = createEventBridgeAuditClient(config.eventBusArn);
+  return new EventBridgeAuditPublisher(eventBridgeAuditClient, config);
 }
 
 /** Exposed for tests of the client policy; prefer `createEventBridgeAuditPublisher`. */

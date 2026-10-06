@@ -9,11 +9,13 @@ export function createAuthenticationAuditRecorder(
 ): AuthenticationAuditRecorder {
   const publisher = createAuditPublisher(settings);
   // The bus ARN stays out of logs: it names the audit account.
+  const auditPublisherConfig =
+    settings.publisher === 'eventbridge'
+      ? { stdout_comparison_mirror: settings.stdoutComparisonMirror, publish_timeout_ms: settings.timeoutMs }
+      : {};
   applicationLogger.info('audit.publisher.selected', {
     audit_publisher: settings.publisher,
-    ...(settings.publisher === 'eventbridge'
-      ? { stdout_comparison_mirror: settings.stdoutComparisonMirror, publish_timeout_ms: settings.timeoutMs }
-      : {}),
+    ...auditPublisherConfig,
   });
   return new RequestAuthenticationAuditRecorder(
     {
