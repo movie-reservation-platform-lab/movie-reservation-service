@@ -50,6 +50,9 @@ export class GraphqlAuthenticationMiddleware implements NestMiddleware {
     try {
       const token = extractBearerToken(req.headers);
       const authenticatedUser = await this.authenticationService.authenticateJwtToken(token);
+      // TODO(#50): Success is not audited yet: no auth mode verifies identity (local-fixed-user ignores the token,
+      //  local-jwt skips signature checks, oidc is unimplemented). Once OIDC validation exists, audit verified
+      //  identities at a deliberate granularity and move this audit-failure policy into the application layer.
       enrichRequestContextWithAuthenticatedUser(authenticatedUser);
       req.authenticatedUser = authenticatedUser;
       req.actor = createActorContext(authenticatedUser);

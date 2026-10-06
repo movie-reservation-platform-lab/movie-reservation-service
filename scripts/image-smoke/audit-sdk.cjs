@@ -6,7 +6,10 @@
 const { Writable } = require('node:stream');
 
 const { validateAuthenticationAuditEvent } = require('@movie-reservation-platform-lab/audit-sdk/core');
-const { AUDIT_EVENTBRIDGE_SOURCE } = require('@movie-reservation-platform-lab/audit-sdk/eventbridge');
+const {
+  AUDIT_EVENTBRIDGE_SOURCE,
+  createEventBridgeAuditPublisher,
+} = require('@movie-reservation-platform-lab/audit-sdk/eventbridge');
 const {
   RequestAuthenticationAuditRecorder,
 } = require('./dist/src/infrastructure/audit/request-authentication-audit-recorder.js');
@@ -43,6 +46,16 @@ async function main() {
     AUDIT_EVENTBRIDGE_SOURCE.length === 0
   ) {
     throw new Error('audit SDK loaded but the service did not publish a valid event');
+  }
+
+  // Builds the real AWS EventBridge client (no network call), proving its runtime dependencies shipped.
+  // (The service composition module is not loaded here: it parses the production config at import.)
+  const eventBridgePublisher = createEventBridgeAuditPublisher({
+    eventBusArn: 'arn:aws:events:eu-central-1:222222222222:event-bus/image-smoke',
+    timeoutMs: 1000,
+  });
+  if (typeof eventBridgePublisher.publish !== 'function') {
+    throw new Error('EventBridge audit publisher could not be composed');
   }
   process.stdout.write('Audit SDK image smoke passed.\n');
 }

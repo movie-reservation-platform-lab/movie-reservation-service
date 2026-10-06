@@ -121,7 +121,7 @@ describe('opt-in demo credential check over HTTP', () => {
   });
 
   it.each(['unavailable', 'timeout', 'throw'] as const)(
-    'responds with redacted 503 for accepted credentials when the audit publisher reports %s',
+    'fails open for accepted credentials when the audit publisher reports %s: 200 without a receipt',
     async (failure) => {
       if (failure === 'throw') {
         vi.spyOn(publisher, 'publish').mockRejectedValueOnce(new Error('private stdout failure detail'));
@@ -130,11 +130,20 @@ describe('opt-in demo credential check over HTTP', () => {
       }
 
       const response = await request(app.getHttpServer()).post('/demo/auth/login').send({ username, password });
-      expect(response.status).toBe(503);
+      expect(response.status).toBe(200);
       expect(response.headers['cache-control']).toBe('no-store');
-      expect(response.body).toEqual({ authenticated: false, message: 'Audit emission unavailable' });
+      // toEqual pins absence: no receipt fields for an event no publisher accepted.
+      expect(response.body).toEqual({ authenticated: true, message: 'Demo credentials accepted' });
       expect(JSON.stringify(response.body)).not.toContain('private');
       expect(logger.info).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(
+        'audit.emit.failed',
+        expect.objectContaining({
+          auth_boundary: 'demo_login',
+          auth_status_id: 1,
+          failure_reason: failure === 'throw' ? 'unavailable' : failure,
+        }),
+      );
     },
   );
 
